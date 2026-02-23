@@ -175,7 +175,7 @@ func CreateUser(ctx *handler.HandlerContext[CreateUserParams, CreateUserRequest]
 
     // Insert into database
     var userID int
-    err := ctx.DB.QueryRow(
+    err := ctx.DB.QueryRowContext(ctx.Context,
         "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
         req.Name, req.Email,
     ).Scan(&userID)
@@ -234,7 +234,7 @@ func GetUser(ctx *handler.HandlerContext[GetUserParams, GetUserRequest]) (*GetUs
     params := ctx.Params.Value()
 
     var user GetUserResponse
-    err := ctx.DB.QueryRow(
+    err := ctx.DB.QueryRowContext(ctx.Context,
         "SELECT id, name, email FROM users WHERE id = $1",
         params.UserID,
     ).Scan(&user.ID, &user.Name, &user.Email)
@@ -311,8 +311,9 @@ type User struct {
 }
 
 // Query single row
-func getUserByID(database *sql.DB, userID string) (*User, error) {
+func getUserByID(ctx context.Context, database *sql.DB, userID string) (*User, error) {
     return db.QueryOne[User](
+        ctx,      // Context for cancellation/timeout
         database,
         "SELECT id, name, email FROM users WHERE id = $1",
         userID,
@@ -320,18 +321,19 @@ func getUserByID(database *sql.DB, userID string) (*User, error) {
 }
 
 // Query multiple rows
-func getAllUsers(database *sql.DB) ([]User, error) {
+func getAllUsers(ctx context.Context, database *sql.DB) ([]User, error) {
     return db.QueryMany[User](
+        ctx,      // Context for cancellation/timeout
         database,
         "SELECT id, name, email FROM users ORDER BY name",
     )
 }
 
 // Transaction wrapper
-func transferCredits(database *sql.DB, fromUserID, toUserID string, amount int) error {
-    return db.WithTx(database, func(tx *sql.Tx) error {
+func transferCredits(ctx context.Context, database *sql.DB, fromUserID, toUserID string, amount int) error {
+    return db.WithTx(ctx, database, func(txCtx context.Context, tx *sql.Tx) error {
         // Deduct from sender
-        _, err := db.Exec(tx,
+        _, err := db.Exec(txCtx, tx,
             "UPDATE users SET credits = credits - $1 WHERE id = $2",
             amount, fromUserID,
         )
@@ -340,13 +342,170 @@ func transferCredits(database *sql.DB, fromUserID, toUserID string, amount int) 
         }
 
         // Add to receiver
-        _, err = db.Exec(tx,
+        _, err = db.Exec(txCtx, tx,
             "UPDATE users SET credits = credits + $1 WHERE id = $2",
             amount, toUserID,
         )
         return err
     })
 }
+```
+
+### Context Propagation and Cancellation
+
+japi-core v2.0.0 introduces comprehensive context propagation throughout the framework, enabling production-ready request cancellation and timeout handling.
+
+#### What is Context Propagation?
+
+Context propagation means that the HTTP request context (`r.Context()`) is automatically threaded through your handlers and into database queries. This enables:
+
+- **✅ Automatic Cancellation** - Database queries stop when clients disconnect
+- **✅ Timeout Support** - Queries respect request-level timeouts
+- **✅ Resource Efficiency** - No wasted database connections or CPU cycles
+- **✅ Distributed Tracing** - Context can carry trace IDs across service boundaries
+- **✅ Production Reliability** - Handles edge cases like slow clients and network issues
+
+#### How It Works
+
+```go
+func GetUser(ctx handler.HandlerContext[GetUserParams, GetUserRequest]) (*GetUserResponse, error) {
+    params := ctx.Params.Value()
+
+    // ctx.Context is automatically set from r.Context() by the adapter
+    // When the client disconnects, ctx.Context is cancelled
+    // The database query will be interrupted
+    user, err := db.QueryOne[User](
+        ctx.Context,  // Propagate request context to database
+        ctx.DB,
+        "SELECT * FROM users WHERE id = $1",
+        params.UserID,
+    )
+
+    if err != nil {
+        // Check for context-specific errors
+        if errors.Is(err, context.Canceled) {
+            // Client disconnected - log and return
+            ctx.Logger.Info("Request cancelled by client")
+            return nil, core.NewAPIError(499, "Client closed request")
+        }
+        if errors.Is(err, context.DeadlineExceeded) {
+            // Request timeout
+            ctx.Logger.Error("Request timeout")
+            return nil, core.NewAPIError(504, "Request timeout")
+        }
+        return nil, core.ErrInternal(err.Error())
+    }
+
+    return &GetUserResponse{User: user}, nil
+}
+```
+
+#### Example: Handling Timeouts
+
+```go
+// In main.go, configure timeout middleware
+r := router.NewChiRouter()
+r.Use(middleware.Timeout(30 * time.Second)) // 30-second timeout
+
+// In handler
+func ExportLargeReport(ctx handler.HandlerContext[ExportParams, ExportRequest]) (*ExportResponse, error) {
+    // This query will be cancelled after 30 seconds
+    results, err := db.QueryMany[ReportRow](
+        ctx.Context,  // Timeout automatically propagated
+        ctx.DB,
+        "SELECT * FROM large_table WHERE created_at > $1",
+        startDate,
+    )
+
+    if errors.Is(err, context.DeadlineExceeded) {
+        return nil, core.NewAPIError(504, "Report generation timed out")
+    }
+
+    // Process results...
+    return &ExportResponse{Data: results}, nil
+}
+```
+
+#### Example: Client Disconnect Detection
+
+```go
+func ProcessLongRunningTask(ctx handler.HandlerContext[TaskParams, TaskRequest]) (*TaskResponse, error) {
+    // Start processing
+    for i := 0; i < 1000000; i++ {
+        // Check if client disconnected every 1000 iterations
+        if i%1000 == 0 {
+            select {
+            case <-ctx.Context.Done():
+                // Client disconnected, stop processing
+                ctx.Logger.Info("Client disconnected, stopping task",
+                    "progress", i,
+                    "error", ctx.Context.Err(),
+                )
+                return nil, core.NewAPIError(499, "Client closed request")
+            default:
+                // Continue processing
+            }
+        }
+
+        // Do work...
+    }
+
+    return &TaskResponse{Processed: 1000000}, nil
+}
+```
+
+#### Transaction Rollback on Cancellation
+
+Transactions automatically rollback when the context is cancelled:
+
+```go
+func TransferFunds(ctx handler.HandlerContext[TransferParams, TransferRequest]) (*TransferResponse, error) {
+    req := ctx.Body.Value()
+
+    err := db.WithTx(ctx.Context, ctx.DB, func(txCtx context.Context, tx *sql.Tx) error {
+        // If client disconnects during this transaction, it will be rolled back
+        _, err := db.Exec(txCtx, tx,
+            "UPDATE accounts SET balance = balance - $1 WHERE id = $2",
+            req.Amount, req.FromAccount,
+        )
+        if err != nil {
+            return err
+        }
+
+        // Simulating slow operation - if context cancelled, transaction rolls back
+        time.Sleep(2 * time.Second)
+
+        _, err = db.Exec(txCtx, tx,
+            "UPDATE accounts SET balance = balance + $1 WHERE id = $2",
+            req.Amount, req.ToAccount,
+        )
+        return err
+    })
+
+    if errors.Is(err, context.Canceled) {
+        ctx.Logger.Info("Transaction cancelled - funds transfer rolled back")
+        return nil, core.NewAPIError(499, "Transfer cancelled")
+    }
+
+    return &TransferResponse{Success: true}, nil
+}
+```
+
+#### Migration from v1.x
+
+If you're migrating from japi-core v1.x (without context support), see [MIGRATION.md](MIGRATION.md) for a comprehensive guide with step-by-step instructions and before/after examples.
+
+**Key Changes:**
+- All database functions now require `context.Context` as the first parameter
+- `HandlerContext` has a new `Context` field (automatically set by adapter)
+- Transaction callbacks receive both `context.Context` and `*sql.Tx`
+
+```go
+// v1.x
+users, err := db.QueryMany[User](ctx.DB, query, args...)
+
+// v2.0.0
+users, err := db.QueryMany[User](ctx.Context, ctx.DB, query, args...)
 ```
 
 ### Connection Pool Configuration
@@ -590,7 +749,7 @@ func ImportUsers(ctx *handler.HandlerContext[ImportUsersParams, ImportUsersReque
 
     for _, user := range users {
         // Insert user into database
-        _, err := ctx.DB.Exec(
+        _, err := ctx.DB.ExecContext(ctx.Context,
             "INSERT INTO users (name, email) VALUES ($1, $2)",
             user.Name, user.Email,
         )
@@ -638,7 +797,7 @@ func CreateOrder(ctx *handler.HandlerContext[CreateOrderParams, CreateOrderReque
     }
 
     // Database constraint error handling
-    err := ctx.DB.QueryRow("INSERT INTO orders ...").Scan(&orderID)
+    err := ctx.DB.QueryRowContext(ctx.Context, "INSERT INTO orders ...").Scan(&orderID)
     if core.IsUniqueConstraintError(err) {
         return nil, core.NewAPIError(
             http.StatusConflict,
@@ -714,7 +873,10 @@ func uniqueEmailValidator(db *sql.DB) validator.Func {
 
         var count int
         // REPLACE 'users' with your actual table name
-        err := db.QueryRow("SELECT COUNT(*) FROM users WHERE email = $1", email).Scan(&count)
+        // Note: Using context.Background() since validators don't have request context
+        // For production with cancellation support, consider async validation
+        err := db.QueryRowContext(context.Background(),
+            "SELECT COUNT(*) FROM users WHERE email = $1", email).Scan(&count)
         if err != nil {
             return false
         }
@@ -732,7 +894,9 @@ func userExistsValidator(db *sql.DB) validator.Func {
 
         var exists bool
         // REPLACE 'users' with your actual table name
-        err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+        // Note: Using context.Background() since validators don't have request context
+        err := db.QueryRowContext(context.Background(),
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
         if err != nil {
             return false
         }
@@ -786,10 +950,12 @@ func userExistsValidator(db *sql.DB) validator.Func {
 #### Functions
 - `db.Connect(config)` - Establish database connection
 - `db.HealthCheck(db)` - Database health check
-- `db.QueryOne[T](querier, query, args...)` - Query single row
-- `db.QueryMany[T](querier, query, args...)` - Query multiple rows
-- `db.Exec(querier, query, args...)` - Execute query
-- `db.WithTx[T](db, fn)` - Transaction wrapper
+- `db.QueryOne[T](ctx, querier, query, args...)` - Query single row (with cancellation/timeout)
+- `db.QueryMany[T](ctx, querier, query, args...)` - Query multiple rows (with cancellation/timeout)
+- `db.Exec(ctx, querier, query, args...)` - Execute query (with cancellation/timeout)
+- `db.WithTx[T](ctx, db, fn)` - Transaction wrapper (with cancellation/timeout)
+
+**Note:** All database operations now require `context.Context` as the first parameter for proper cancellation and timeout support.
 
 ### Middleware Package
 
