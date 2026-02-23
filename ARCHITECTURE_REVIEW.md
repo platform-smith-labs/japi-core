@@ -93,41 +93,37 @@ japi-core is a type-safe Go API framework built on generics, providing compile-t
 - **Type Inference**: Works well in most cases, reducing boilerplate
 - **Struct Tag Validation**: `binding:"required"` tags enable declarative validation
 
-**Concerns**:
-- **Nullable.Value() CRITICAL BUG**: Panics on invalid access - violates Go error handling idioms
+**Previous Concerns (Now Resolved in v4.0.0)**:
+- ✅ **FIXED: Nullable.Value() behavior** - Now returns `(T, error)` following Go idioms
   ```go
-  // DANGEROUS - panics if Params.Valid is false!
-  userID := ctx.Params.Value().UserID
+  // v4.0.0 - Idiomatic error handling
+  value, err := ctx.Params.Value()
+  if err != nil {
+      return nil, core.ErrInternal("missing parameters")
+  }
+  userID := value.UserID
   ```
+- **Safe alternatives available**: `TryValue()`, `ValueOr()`, `ValueOrDefault()` for optional fields
+
+**Remaining Concerns**:
 - **No Custom Validator Registration**: Can't add domain-specific validators beyond struct tags
 - **Limited Sum Types**: Can't express "either A or B" types in responses
 
-**Critical Fix Needed**:
+**Implementation (v4.0.0)**:
 ```go
-// BEFORE (panics):
-func (n Nullable[T]) Value() T {
-    if !n.Valid {
-        panic("cannot access value of invalid Nullable")
-    }
-    return n.Data
-}
-
-// AFTER (returns error):
+// Current implementation - idiomatic Go
 func (n Nullable[T]) Value() (T, error) {
-    var zero T
-    if !n.Valid {
-        return zero, errors.New("nullable value is not valid")
+    if !n.hasValue {
+        var zero T
+        return zero, fmt.Errorf("nullable value is not present")
     }
-    return n.Data, nil
+    return n.value, nil
 }
 
-// OR add safe accessor:
-func (n Nullable[T]) ValueOr(defaultValue T) T {
-    if !n.Valid {
-        return defaultValue
-    }
-    return n.Data
-}
+// Safe alternatives (no error handling needed):
+func (n Nullable[T]) ValueOr(defaultValue T) T
+func (n Nullable[T]) ValueOrDefault() T
+func (n Nullable[T]) TryValue() (T, bool)
 ```
 
 ---
@@ -365,10 +361,11 @@ func setupSQLiteDB(t *testing.T) *sql.DB {
 
 | Feature | Status | Priority |
 |---------|--------|----------|
-| Metrics/Observability | Missing | P0 |
+| Nullable.Value() Error Handling | ✅ Complete (v4.0.0) | P0 |
+| Metrics/Observability | ✅ Complete (Prometheus) | P0 |
 | Distributed Tracing | Missing | P0 |
 | Rate Limiting | Missing | P0 |
-| Request ID Propagation | Missing | P1 |
+| Request ID Propagation | ✅ Complete (HTTP + Typed) | P1 |
 | Health Checks | Missing | P1 |
 | Database Test Coverage | 0% | P1 |
 | Integration Tests | Missing | P1 |
@@ -445,15 +442,15 @@ func setupSQLiteDB(t *testing.T) *sql.DB {
 
 ### P0 (Critical - Must Fix Before Production)
 
-1. **Fix Nullable.Value() panic behavior** - Change to return error or add ValueOr()
-2. **Add Prometheus metrics middleware** - Request rate, latency, error rate
+1. ✅ **RESOLVED: Fix Nullable.Value() panic behavior** - Changed to return `(T, error)` in v4.0.0
+2. ✅ **RESOLVED: Add Prometheus metrics middleware** - Implemented with opt-in API
 3. **Add OpenTelemetry tracing support** - Distributed debugging essential
 4. **Implement rate limiting middleware** - Prevent DoS attacks
 5. **Add database test utilities** - Enable comprehensive testing
 
 ### P1 (High Priority - Should Fix Soon)
 
-1. **Add request ID middleware** - Correlation IDs for debugging
+1. ✅ **RESOLVED: Add request ID middleware** - Implemented with HTTP and typed middleware
 2. **Implement health check endpoints** - `/health` and `/readiness`
 3. **Write integration tests** - Full request/response cycle testing
 4. **Add panic recovery with error reporting** - Graceful failure handling

@@ -177,11 +177,14 @@ type CreateUserResponse struct {
 // Handler implementation
 func CreateUser(ctx *handler.HandlerContext[CreateUserParams, CreateUserRequest]) (*CreateUserResponse, *core.APIError) {
     // Access validated request body
-    req := ctx.Body.Value()
+    req, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
 
     // Insert into database
     var userID int
-    err := ctx.DB.QueryRowContext(ctx.Context,
+    err = ctx.DB.QueryRowContext(ctx.Context,
         "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
         req.Name, req.Email,
     ).Scan(&userID)
@@ -241,10 +244,13 @@ type GetUserResponse struct {
 }
 
 func GetUser(ctx *handler.HandlerContext[GetUserParams, GetUserRequest]) (*GetUserResponse, *core.APIError) {
-    params := ctx.Params.Value()
+    params, err := ctx.Params.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing parameters")
+    }
 
     var user GetUserResponse
-    err := ctx.DB.QueryRowContext(ctx.Context,
+    err = ctx.DB.QueryRowContext(ctx.Context,
         "SELECT id, name, email FROM users WHERE id = $1",
         params.UserID,
     ).Scan(&user.ID, &user.Name, &user.Email)
@@ -379,7 +385,10 @@ Context propagation means that the HTTP request context (`r.Context()`) is autom
 
 ```go
 func GetUser(ctx handler.HandlerContext[GetUserParams, GetUserRequest]) (*GetUserResponse, error) {
-    params := ctx.Params.Value()
+    params, err := ctx.Params.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing parameters")
+    }
 
     // ctx.Context is automatically set from r.Context() by the adapter
     // When the client disconnects, ctx.Context is cancelled
@@ -470,9 +479,12 @@ Transactions automatically rollback when the context is cancelled:
 
 ```go
 func TransferFunds(ctx handler.HandlerContext[TransferParams, TransferRequest]) (*TransferResponse, error) {
-    req := ctx.Body.Value()
+    req, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
 
-    err := db.WithTx(ctx.Context, ctx.DB, func(txCtx context.Context, tx *sql.Tx) error {
+    err = db.WithTx(ctx.Context, ctx.DB, func(txCtx context.Context, tx *sql.Tx) error {
         // If client disconnects during this transaction, it will be rolled back
         _, err := db.Exec(txCtx, tx,
             "UPDATE accounts SET balance = balance - $1 WHERE id = $2",
@@ -753,75 +765,72 @@ type UpdateUserRequest struct {
 }
 
 func UpdateUser(ctx *handler.HandlerContext[UpdateUserParams, UpdateUserRequest]) (*UserResponse, *core.APIError) {
-    // Safe: ParseBody middleware guarantees ctx.Body is populated
-    req := ctx.Body.Value()
+    // ParseBody middleware guarantees ctx.Body is populated
+    req, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
 
     // Check if name was provided
     if req.Name.HasValue() {
-        // Use the value safely
-        name := req.Name.Value()
-        // ... update name
+        // Use the value safely with error handling
+        name, err := req.Name.Value()
+        if err == nil {
+            // ... update name
+        }
     }
 
-    // Get value or default
+    // Get value or default (no error handling needed)
     email := req.Email.ValueOrDefault()
 
     return &UserResponse{}, nil
 }
 ```
 
-**Important: Value() Panic Behavior**
+**Important: Value() Error Handling**
 
-`Nullable.Value()` implements fail-fast behavior: it panics (with a recoverable panic) if called on an empty Nullable. This is intentional:
+`Nullable.Value()` returns an error when called on an empty Nullable, following idiomatic Go error handling:
 
 ```go
-// ✅ SAFE - Middleware guarantees value is set
+// ✅ SAFE - Check error when accessing value
 func CreateUser(ctx HandlerContext) (*Response, error) {
-    body := ctx.Body.Value() // Never panics if ParseBody middleware applied
+    body, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
     // Use body...
 }
 
-// ❌ UNSAFE - Calling Value() without checking
-func HandleOptional(ctx HandlerContext) (*Response, error) {
-    // This will panic if UserUUID not set by RequireAuth middleware
-    userID := ctx.UserUUID.Value()
+// ❌ UNSAFE - Ignoring error return
+func HandleUnsafe(ctx HandlerContext) (*Response, error) {
+    userID, _ := ctx.UserUUID.Value() // Ignoring error - userID will be zero value!
     // ...
 }
 
 // ✅ SAFE - Check before accessing optional values
 func HandleOptional(ctx HandlerContext) (*Response, error) {
     if ctx.UserUUID.HasValue() {
-        userID := ctx.UserUUID.Value() // Safe
-        // User is authenticated
+        userID, err := ctx.UserUUID.Value()
+        if err != nil {
+            return nil, err
+        }
+        // User is authenticated, use userID
     } else {
         // User not authenticated, handle accordingly
     }
 }
 
-// ✅ SAFE - Use TryValue for optional fields
+// ✅ BEST - Use TryValue for optional fields (no error handling needed)
 func HandleOptional(ctx HandlerContext) (*Response, error) {
     if userID, ok := ctx.UserUUID.TryValue(); ok {
         // User is authenticated
     }
 }
-```
 
-**Panic Recovery (Advanced)**
-
-If needed, you can recover from Nullable panics in middleware:
-
-```go
-func RecoveryMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        defer func() {
-            if r := recover(); r != nil {
-                // Log and return error response
-                log.Printf("Panic recovered: %v", r)
-                http.Error(w, "Internal Server Error", 500)
-            }
-        }()
-        next.ServeHTTP(w, r)
-    })
+// ✅ BEST - Use ValueOr for defaults (no error handling needed)
+func HandleOptional(ctx HandlerContext) (*Response, error) {
+    limit := ctx.Params.Limit.ValueOr(10) // Default to 10
+    // Use limit...
 }
 ```
 
@@ -844,7 +853,10 @@ type ImportUsersResponse struct {
 }
 
 func ImportUsers(ctx *handler.HandlerContext[ImportUsersParams, ImportUsersRequest]) (*ImportUsersResponse, *core.APIError) {
-    users := ctx.Body.Value()
+    users, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
 
     for _, user := range users {
         // Insert user into database
@@ -878,7 +890,10 @@ var ImportUsersHandler = handler.MakeHandler(
 
 ```go
 func CreateOrder(ctx *handler.HandlerContext[CreateOrderParams, CreateOrderRequest]) (*CreateOrderResponse, *core.APIError) {
-    req := ctx.Body.Value()
+    req, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
 
     // Validation error with field-level details
     if req.Quantity <= 0 {
@@ -896,7 +911,7 @@ func CreateOrder(ctx *handler.HandlerContext[CreateOrderParams, CreateOrderReque
     }
 
     // Database constraint error handling
-    err := ctx.DB.QueryRowContext(ctx.Context, "INSERT INTO orders ...").Scan(&orderID)
+    err = ctx.DB.QueryRowContext(ctx.Context, "INSERT INTO orders ...").Scan(&orderID)
     if core.IsUniqueConstraintError(err) {
         return nil, core.NewAPIError(
             http.StatusConflict,
@@ -1039,10 +1054,10 @@ func userExistsValidator(db *sql.DB) validator.Func {
 
 #### Nullable Methods
 - `nullable.HasValue()` - Check if value exists
-- `nullable.Value()` - Get value (panics if absent - recoverable panic)
-- `nullable.TryValue()` - Safe value extraction with boolean (never panics)
-- `nullable.ValueOrDefault()` - Get value or zero value (never panics)
-- `nullable.ValueOr(default)` - Get value or provided default (never panics)
+- `nullable.Value()` - Get value and error (returns error if absent)
+- `nullable.TryValue()` - Safe value extraction with boolean (never returns error)
+- `nullable.ValueOrDefault()` - Get value or zero value (never returns error)
+- `nullable.ValueOr(default)` - Get value or provided default (never returns error)
 
 ### Database Package
 
@@ -1269,8 +1284,10 @@ func createUserHandler(
 ) (UserResponse, error) {
     // Access request ID from context
     if ctx.RequestID.HasValue() {
-        requestID := ctx.RequestID.Value()
-        ctx.Logger.Info("Creating user", "request_id", requestID)
+        requestID, err := ctx.RequestID.Value()
+        if err == nil {
+            ctx.Logger.Info("Creating user", "request_id", requestID)
+        }
     }
 
     // Your business logic...
@@ -1297,7 +1314,10 @@ func callExternalService(ctx handler.HandlerContext[P, B], url string) error {
 
     // Propagate request ID to downstream service
     if ctx.RequestID.HasValue() {
-        req.Header.Set("X-Request-ID", ctx.RequestID.Value())
+        requestID, err := ctx.RequestID.Value()
+        if err == nil {
+            req.Header.Set("X-Request-ID", requestID)
+        }
     }
 
     // Make request...
@@ -1584,7 +1604,7 @@ See `metrics/prometheus_test.go` for benchmark results.
 
 1. **Use middleware composition** - Chain middleware in logical order (auth → validation → logging)
 2. **Leverage generics** - Let the type system catch errors at compile time
-3. **Safe Nullable access** - Use `Nullable.Value()` only when middleware guarantees it's set; use `HasValue()` or `TryValue()` for optional fields
+3. **Safe Nullable access** - Always handle errors from `Nullable.Value()`; use `TryValue()` or `ValueOr()` for optional fields to avoid error handling
 4. **Structured logging** - Include context in all log messages
 5. **Transaction safety** - Always use `db.WithTx()` for multi-statement operations
 6. **Error details** - Provide meaningful error messages and field-level validation errors

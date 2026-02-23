@@ -1,5 +1,11 @@
 package handler
 
+import (
+	"net/http"
+
+	"github.com/platform-smith-labs/japi-core/core"
+)
+
 // Nullable represents an optional value that may or may not contain data.
 //
 // It provides explicit optionality for request-scoped data in HandlerContext,
@@ -7,26 +13,29 @@ package handler
 //
 // Design Philosophy:
 //
-// Nullable implements a fail-fast pattern where middleware is responsible for
-// populating values, and handlers can safely assume the data is present by
-// calling Value(). This eliminates defensive nil checks in business logic
-// when middleware contracts are properly enforced.
+// Nullable implements explicit error handling for optional values. Middleware is
+// responsible for populating values, and handlers must check for errors when
+// calling Value(). This provides idiomatic Go error handling while maintaining
+// type safety for request-scoped data.
 //
 // Example Usage:
 //
 //	// Middleware populates the value
 //	ctx.Body = handler.NewNullable(validatedBody)
 //
-//	// Handler assumes middleware ran correctly
+//	// Handler checks for errors when accessing value
 //	func CreateUser(ctx HandlerContext) (*Response, error) {
-//	    body := ctx.Body.Value() // Panics if middleware didn't run
+//	    body, err := ctx.Body.Value() // Returns error if middleware didn't run
+//	    if err != nil {
+//	        return nil, core.ErrInternal("missing request body")
+//	    }
 //	    // Use body safely...
 //	}
 //
 // For optional values that may legitimately be absent, use HasValue() or TryValue():
 //
 //	if ctx.UserUUID.HasValue() {
-//	    userID := ctx.UserUUID.Value()
+//	    userID, _ := ctx.UserUUID.Value() // Safe after HasValue() check
 //	    // User is authenticated
 //	}
 type Nullable[T any] struct {
@@ -57,24 +66,30 @@ func (n Nullable[T]) HasValue() bool {
 	return n.hasValue
 }
 
-// Value returns the contained value or panics if no value is present.
+// Value returns the contained value and an error if no value is present.
 //
-// This method implements fail-fast behavior: it assumes middleware has properly
-// populated the value. If Value() is called on an empty Nullable, it panics
-// with a recoverable panic (not os.Exit), allowing the application to continue
-// running and the panic to be caught by recovery middleware.
+// This method provides idiomatic Go error handling for accessing nullable values.
+// It returns an error if the Nullable is empty, allowing callers to handle the
+// absence explicitly.
 //
-// Use Value() when middleware guarantees the value is set (e.g., ParseBody
-// middleware always populates ctx.Body for handlers that require it).
+// Use Value() when you need explicit error handling at the call site. For optional
+// values where you want to provide a default, use ValueOr() or ValueOrDefault().
+// For simple presence checks, use HasValue() or TryValue().
 //
-// For optional values, use HasValue() or TryValue() instead.
+// Returns an error if HasValue() is false.
 //
-// Panics if HasValue() is false.
-func (n Nullable[T]) Value() T {
+// Example:
+//
+//	body, err := ctx.Body.Value()
+//	if err != nil {
+//	    return nil, core.ErrInternal("missing request body")
+//	}
+func (n Nullable[T]) Value() (T, error) {
 	if !n.hasValue {
-		panic("japi-core: attempted to access Nullable value when HasValue is false")
+		var zero T
+		return zero, core.NewAPIError(http.StatusInternalServerError, "nullable value is not present")
 	}
-	return n.value
+	return n.value, nil
 }
 
 // TryValue returns the contained value and a boolean indicating whether the value exists.

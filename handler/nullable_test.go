@@ -14,8 +14,12 @@ func TestNewNullable(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true")
 		}
-		if n.Value() != "test" {
-			t.Errorf("Expected value 'test', got '%s'", n.Value())
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != "test" {
+			t.Errorf("Expected value 'test', got '%s'", value)
 		}
 	})
 
@@ -24,8 +28,12 @@ func TestNewNullable(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true")
 		}
-		if n.Value() != 42 {
-			t.Errorf("Expected value 42, got %d", n.Value())
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != 42 {
+			t.Errorf("Expected value 42, got %d", value)
 		}
 	})
 
@@ -39,7 +47,10 @@ func TestNewNullable(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true")
 		}
-		result := n.Value()
+		result, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
 		if result.Name != "Alice" || result.Age != 30 {
 			t.Errorf("Expected struct with Name='Alice' Age=30, got %+v", result)
 		}
@@ -51,7 +62,10 @@ func TestNewNullable(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true")
 		}
-		result := n.Value()
+		result, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
 		if result == nil || *result != "hello" {
 			t.Error("Expected pointer to 'hello'")
 		}
@@ -63,8 +77,12 @@ func TestNewNullable(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true")
 		}
-		if n.Value() != id {
-			t.Errorf("Expected UUID %s, got %s", id, n.Value())
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != id {
+			t.Errorf("Expected UUID %s, got %s", id, value)
 		}
 	})
 }
@@ -113,58 +131,28 @@ func TestHasValue(t *testing.T) {
 	})
 }
 
-// TestValue verifies Value returns the contained value
+// TestValue verifies Value returns the contained value or error
 func TestValue(t *testing.T) {
 	t.Run("returns value when present", func(t *testing.T) {
 		n := NewNullable("success")
-		result := n.Value()
+		result, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
 		if result != "success" {
 			t.Errorf("Expected 'success', got '%s'", result)
 		}
 	})
 
-	t.Run("panics when value not present", func(t *testing.T) {
+	t.Run("returns error when value not present", func(t *testing.T) {
 		n := Nil[string]()
 
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected Value() to panic on empty Nullable")
-			} else {
-				// Verify panic message
-				msg, ok := r.(string)
-				if !ok {
-					t.Errorf("Expected panic message to be string, got %T", r)
-				}
-				expectedMsg := "japi-core: attempted to access Nullable value when HasValue is false"
-				if msg != expectedMsg {
-					t.Errorf("Expected panic message '%s', got '%s'", expectedMsg, msg)
-				}
-			}
-		}()
-
-		// This should panic
-		_ = n.Value()
-	})
-}
-
-// TestPanicRecovery demonstrates that Value() panic can be recovered
-func TestPanicRecovery(t *testing.T) {
-	t.Run("panic can be recovered in middleware", func(t *testing.T) {
-		recovered := false
-
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					recovered = true
-				}
-			}()
-
-			n := Nil[int]()
-			_ = n.Value() // This panics
-		}()
-
-		if !recovered {
-			t.Error("Expected panic to be recoverable")
+		value, err := n.Value()
+		if err == nil {
+			t.Error("Expected error when accessing empty Nullable, got nil")
+		}
+		if value != "" {
+			t.Errorf("Expected zero value (empty string), got '%s'", value)
 		}
 	})
 }
@@ -328,7 +316,11 @@ func TestZeroValueBehavior(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true for zero value")
 		}
-		if n.Value() != 0 {
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != 0 {
 			t.Error("Expected to retrieve zero value")
 		}
 	})
@@ -338,7 +330,11 @@ func TestZeroValueBehavior(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true for empty string")
 		}
-		if n.Value() != "" {
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != "" {
 			t.Error("Expected to retrieve empty string")
 		}
 	})
@@ -348,7 +344,11 @@ func TestZeroValueBehavior(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true for false")
 		}
-		if n.Value() != false {
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != false {
 			t.Error("Expected to retrieve false")
 		}
 	})
@@ -360,7 +360,11 @@ func TestZeroValueBehavior(t *testing.T) {
 		if !n.HasValue() {
 			t.Error("Expected HasValue() to be true even for nil pointer")
 		}
-		if n.Value() != nil {
+		value, err := n.Value()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		if value != nil {
 			t.Error("Expected to retrieve nil pointer")
 		}
 	})
@@ -372,7 +376,12 @@ func TestNullableComparison(t *testing.T) {
 		n1 := NewNullable(42)
 		n2 := NewNullable(42)
 
-		if n1.Value() != n2.Value() {
+		v1, err1 := n1.Value()
+		v2, err2 := n2.Value()
+		if err1 != nil || err2 != nil {
+			t.Errorf("Expected no errors, got err1=%v err2=%v", err1, err2)
+		}
+		if v1 != v2 {
 			t.Error("Expected values to be equal")
 		}
 	})
@@ -412,7 +421,7 @@ func BenchmarkValue(b *testing.B) {
 	n := NewNullable(42)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = n.Value()
+		_, _ = n.Value()
 	}
 }
 
@@ -446,8 +455,10 @@ func BenchmarkValueOr(b *testing.B) {
 func ExampleNewNullable() {
 	n := NewNullable("hello")
 	if n.HasValue() {
-		value := n.Value()
-		fmt.Println(value)
+		value, err := n.Value()
+		if err == nil {
+			fmt.Println(value)
+		}
 	}
 	// Output: hello
 }
@@ -461,31 +472,24 @@ func ExampleNil() {
 	// Output: No value present
 }
 
-// ExampleNullable_Value demonstrates the fail-fast behavior
+// ExampleNullable_Value demonstrates error handling when accessing values
 func ExampleNullable_Value() {
 	// Safe usage - value is present
 	n := NewNullable(42)
-	value := n.Value()
-	fmt.Println(value)
+	value, err := n.Value()
+	if err == nil {
+		fmt.Println(value)
+	}
 
-	// Unsafe usage - this would panic (commented out):
-	// empty := Nil[int]()
-	// value = empty.Value() // panic: japi-core: attempted to access Nullable value when HasValue is false
+	// Handling empty Nullable - returns error:
+	empty := Nil[int]()
+	_, err = empty.Value()
+	if err != nil {
+		fmt.Println("Error: value not present")
+	}
 
 	// Output: 42
-}
-
-// ExampleNullable_Value_recovery demonstrates recovering from panic
-func ExampleNullable_Value_recovery() {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Recovered from panic")
-		}
-	}()
-
-	n := Nil[string]()
-	_ = n.Value() // This will panic, but we recover
-	// Output: Recovered from panic
+	// Error: value not present
 }
 
 // ExampleNullable_TryValue demonstrates safe value access

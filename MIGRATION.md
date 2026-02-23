@@ -1,4 +1,190 @@
-# Migration Guide: v1.x to v2.0.0
+# Migration Guide
+
+This guide helps you migrate between major versions of japi-core.
+
+---
+
+## v3.x to v4.0.0
+
+### Overview
+
+Version 4.0.0 is a **breaking change** that modifies `Nullable.Value()` to return `(T, error)` instead of panicking. This makes the API more idiomatic Go and follows explicit error handling patterns.
+
+**Breaking Changes:**
+- ✅ `Nullable.Value()` now returns `(T, error)` instead of `T`
+- ✅ Removed panic behavior - returns error for empty Nullables
+- ✅ More Go-idiomatic error handling
+
+### Breaking Change: Nullable.Value()
+
+The `Value()` method signature has changed from returning a single value to returning `(value, error)`.
+
+#### Before (v3.x)
+
+```go
+func CreateUser(ctx *handler.HandlerContext[CreateUserParams, CreateUserRequest]) (*CreateUserResponse, error) {
+    // v3.x - Could panic if middleware didn't run
+    req := ctx.Body.Value()
+
+    params := ctx.Params.Value()
+
+    // Use req and params...
+    return &CreateUserResponse{}, nil
+}
+```
+
+#### After (v4.0.0)
+
+```go
+func CreateUser(ctx *handler.HandlerContext[CreateUserParams, CreateUserRequest]) (*CreateUserResponse, error) {
+    // v4.0.0 - Explicit error handling
+    req, err := ctx.Body.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing request body")
+    }
+
+    params, err := ctx.Params.Value()
+    if err != nil {
+        return nil, core.ErrInternal("missing parameters")
+    }
+
+    // Use req and params...
+    return &CreateUserResponse{}, nil
+}
+```
+
+### Migration Strategy
+
+#### Option 1: Update All Value() Calls (Recommended)
+
+Add error handling to every `Value()` call:
+
+```go
+// Find and replace pattern:
+value := ctx.Field.Value()
+// With:
+value, err := ctx.Field.Value()
+if err != nil {
+    return nil, core.ErrInternal("missing field")
+}
+```
+
+#### Option 2: Use Safe Alternatives (When Appropriate)
+
+For optional fields, consider using safe alternatives that don't require error handling:
+
+```go
+// v3.x - Required Value() with HasValue() check
+if ctx.UserUUID.HasValue() {
+    userID := ctx.UserUUID.Value()
+    // Use userID...
+}
+
+// v4.0.0 - Option A: TryValue (no error handling needed)
+if userID, ok := ctx.UserUUID.TryValue(); ok {
+    // Use userID...
+}
+
+// v4.0.0 - Option B: ValueOr with default
+userID := ctx.UserUUID.ValueOr(uuid.Nil)
+
+// v4.0.0 - Option C: ValueOrDefault
+userID := ctx.UserUUID.ValueOrDefault()
+```
+
+### Common Patterns
+
+#### Pattern 1: Required Fields (middleware guarantees)
+
+```go
+// v3.x
+req := ctx.Body.Value() // Panics if ParseBody not applied
+
+// v4.0.0
+req, err := ctx.Body.Value()
+if err != nil {
+    return nil, core.ErrInternal("missing request body")
+}
+```
+
+#### Pattern 2: Optional Fields
+
+```go
+// v3.x
+if ctx.RequestID.HasValue() {
+    requestID := ctx.RequestID.Value()
+    ctx.Logger.Info("Processing request", "request_id", requestID)
+}
+
+// v4.0.0 - Best practice: use TryValue
+if requestID, ok := ctx.RequestID.TryValue(); ok {
+    ctx.Logger.Info("Processing request", "request_id", requestID)
+}
+
+// v4.0.0 - Alternative: still use Value() with error handling
+if ctx.RequestID.HasValue() {
+    requestID, err := ctx.RequestID.Value()
+    if err == nil {
+        ctx.Logger.Info("Processing request", "request_id", requestID)
+    }
+}
+```
+
+#### Pattern 3: Nested Nullable Fields
+
+```go
+// v3.x
+if req.Name.HasValue() {
+    name := req.Name.Value()
+    // Update name...
+}
+
+// v4.0.0 - Recommended: ValueOr for simple defaults
+name := req.Name.ValueOr("") // Empty string if not provided
+
+// v4.0.0 - Alternative: explicit error handling
+if req.Name.HasValue() {
+    name, err := req.Name.Value()
+    if err != nil {
+        return nil, err
+    }
+    // Update name...
+}
+```
+
+### Automated Migration
+
+Use this script to find all `Value()` usages:
+
+```bash
+# Find all .Value() calls in your codebase
+grep -r "\.Value()" --include="*.go" .
+
+# Or use ripgrep for better results
+rg "\.Value\(\)" -g "*.go"
+```
+
+### Testing Your Migration
+
+1. **Update all handlers** to use new `Value()` signature
+2. **Run tests**: `go test ./...`
+3. **Fix compilation errors** for missed `Value()` calls
+4. **Review error handling** - ensure appropriate error messages
+5. **Test edge cases** - ensure Nullable behavior works as expected
+
+### Benefits of v4.0.0
+
+- ✅ **Go-idiomatic** - Explicit error handling
+- ✅ **No panics** - Safer production code
+- ✅ **Clearer intent** - Errors make absence explicit
+- ✅ **Better debugging** - Error messages instead of stack traces
+- ✅ **Safe alternatives** - `TryValue()`, `ValueOr()` still available
+
+---
+
+## v1.x to v2.0.0
+
+### Overview
 
 This guide helps you migrate from japi-core v1.x to v2.0.0, which introduces proper `context.Context` propagation throughout the framework.
 

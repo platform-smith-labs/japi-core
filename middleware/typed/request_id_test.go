@@ -24,8 +24,12 @@ func TestWithRequestID_EnrichesContext(t *testing.T) {
 				t.Error("Expected RequestID to have value, got no value")
 			}
 
-			if ctx.RequestID.Value() != expectedRequestID {
-				t.Errorf("Expected request ID %s, got %s", expectedRequestID, ctx.RequestID.Value())
+			requestID, err := ctx.RequestID.Value()
+			if err != nil {
+				t.Errorf("Expected no error, got %v", err)
+			}
+			if requestID != expectedRequestID {
+				t.Errorf("Expected request ID %s, got %s", expectedRequestID, requestID)
 			}
 
 			return struct{}{}, nil
@@ -62,7 +66,8 @@ func TestWithRequestID_EmptyWhenNoContext(t *testing.T) {
 		testHandler := func(ctx handler.HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
 			// Verify request ID is not set
 			if ctx.RequestID.HasValue() {
-				t.Errorf("Expected RequestID to have no value, got value: %s", ctx.RequestID.Value())
+				value, _ := ctx.RequestID.Value()
+				t.Errorf("Expected RequestID to have no value, got value: %s", value)
 			}
 
 			return struct{}{}, nil
@@ -146,7 +151,8 @@ func TestWithRequestID_PreservesOtherContext(t *testing.T) {
 		// Create test handler that checks all context fields
 		testHandler := func(ctx handler.HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
 			// Verify request ID is set
-			if !ctx.RequestID.HasValue() || ctx.RequestID.Value() != expectedRequestID {
+			requestID, err := ctx.RequestID.Value()
+			if !ctx.RequestID.HasValue() || err != nil || requestID != expectedRequestID {
 				t.Error("Expected request ID to be set correctly")
 			}
 
@@ -194,7 +200,10 @@ func TestWithRequestID_Integration(t *testing.T) {
 		// Create typed handler
 		testHandler := func(ctx handler.HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
 			if ctx.RequestID.HasValue() {
-				capturedRequestID = ctx.RequestID.Value()
+				value, err := ctx.RequestID.Value()
+				if err == nil {
+					capturedRequestID = value
+				}
 			}
 			return struct{}{}, nil
 		}
