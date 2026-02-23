@@ -1360,6 +1360,226 @@ Request IDs work seamlessly with APM tools like:
 - **Sentry** - Groups errors by request
 - **Elastic APM** - Traces requests through microservices
 
+### Prometheus Metrics
+
+japi-core provides built-in Prometheus metrics middleware for monitoring HTTP request performance and availability. This is essential for production observability.
+
+#### Why Prometheus Metrics Matter
+
+- **Performance Monitoring** - Track request duration and identify slow endpoints
+- **Traffic Analysis** - Monitor request volume by method, path, and status code
+- **Capacity Planning** - Observe concurrent request load with in-flight gauge
+- **SLA Compliance** - Measure uptime and error rates
+- **Alerting** - Set up alerts on metric thresholds (high error rate, slow requests)
+
+#### Metrics Collected
+
+When enabled, the following metrics are automatically tracked:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `http_requests_total` | Counter | `method`, `path`, `status` | Total number of HTTP requests |
+| `http_request_duration_seconds` | Histogram | `method`, `path` | Request latency distribution with configurable buckets |
+| `http_requests_in_flight` | Gauge | - | Current number of concurrent requests being served |
+
+**Path Normalization:** Paths are automatically normalized to prevent metric cardinality explosion. For example, `/users/123` becomes `/users/{id}` by extracting the Chi route pattern.
+
+#### Usage
+
+**Basic Setup (Recommended)**
+
+Enable Prometheus metrics with default settings:
+
+```go
+import (
+    "github.com/platform-smith-labs/japi-core/metrics"
+    "github.com/platform-smith-labs/japi-core/router"
+)
+
+func main() {
+    r := router.NewChiRouter()
+
+    // Enable Prometheus metrics (opt-in)
+    metrics.EnablePrometheusMetrics(r, "/metrics")
+
+    // ... register routes ...
+
+    http.ListenAndServe(":8080", r)
+}
+```
+
+The metrics endpoint will be available at `http://localhost:8080/metrics`
+
+**Custom Configuration**
+
+Customize histogram buckets, namespace, and subsystem:
+
+```go
+import "github.com/platform-smith-labs/japi-core/metrics"
+
+func main() {
+    r := router.NewChiRouter()
+
+    // Custom configuration
+    opts := metrics.MetricsOptions{
+        DurationBuckets: []float64{0.001, 0.01, 0.1, 1, 10},  // Response time buckets in seconds
+        Namespace:       "myapp",                               // Metric prefix
+        Subsystem:       "api",                                 // Metric subsystem
+    }
+
+    // Metrics will be named: myapp_api_requests_total, myapp_api_request_duration_seconds, etc.
+    metrics.EnablePrometheusMetricsWithOptions(r, "/metrics", opts)
+
+    // ... register routes ...
+}
+```
+
+**Default Options**
+
+If you don't specify options, these production-ready defaults are used:
+
+- **DurationBuckets**: `[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10]` seconds
+  - Covers responses from 1ms to 10 seconds
+- **Namespace**: `"http"`
+- **Subsystem**: `""` (empty)
+
+#### Example Metrics Output
+
+```prometheus
+# HELP http_requests_total Total number of HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",path="/users",status="200"} 1523
+http_requests_total{method="POST",path="/users",status="201"} 342
+http_requests_total{method="GET",path="/users/{id}",status="200"} 5621
+http_requests_total{method="GET",path="/users/{id}",status="404"} 12
+
+# HELP http_request_duration_seconds HTTP request latency distribution
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{method="GET",path="/users",le="0.001"} 823
+http_request_duration_seconds_bucket{method="GET",path="/users",le="0.005"} 1420
+http_request_duration_seconds_bucket{method="GET",path="/users",le="0.01"} 1502
+http_request_duration_seconds_bucket{method="GET",path="/users",le="+Inf"} 1523
+http_request_duration_seconds_sum{method="GET",path="/users"} 4.231
+http_request_duration_seconds_count{method="GET",path="/users"} 1523
+
+# HELP http_requests_in_flight Current number of HTTP requests being served
+# TYPE http_requests_in_flight gauge
+http_requests_in_flight 3
+```
+
+#### Grafana Dashboard
+
+Use these PromQL queries to visualize metrics in Grafana:
+
+**Request Rate (requests/second)**
+```promql
+sum(rate(http_requests_total[5m])) by (method, path)
+```
+
+**Error Rate (4xx/5xx errors per second)**
+```promql
+sum(rate(http_requests_total{status=~"4..|5.."}[5m])) by (status)
+```
+
+**P95 Latency (95th percentile response time)**
+```promql
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path))
+```
+
+**Concurrent Requests**
+```promql
+http_requests_in_flight
+```
+
+**Request Success Rate (%)**
+```promql
+sum(rate(http_requests_total{status="200"}[5m])) / sum(rate(http_requests_total[5m])) * 100
+```
+
+#### Integration with Kubernetes
+
+**Kubernetes Pod Annotations**
+
+Add these annotations to enable Prometheus scraping:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  containers:
+  - name: api
+    image: myapp:latest
+    ports:
+    - containerPort: 8080
+```
+
+**Prometheus ServiceMonitor (Prometheus Operator)**
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: myapp-metrics
+spec:
+  selector:
+    matchLabels:
+      app: myapp
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+```
+
+#### Alerting Rules
+
+Example Prometheus alerting rules:
+
+```yaml
+groups:
+- name: myapp_alerts
+  rules:
+  - alert: HighErrorRate
+    expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+    for: 5m
+    annotations:
+      summary: "High error rate detected (>5%)"
+
+  - alert: HighLatency
+    expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path)) > 1
+    for: 10m
+    annotations:
+      summary: "High latency detected (P95 > 1s)"
+
+  - alert: HighConcurrency
+    expr: http_requests_in_flight > 100
+    for: 5m
+    annotations:
+      summary: "High concurrent requests (>100)"
+```
+
+#### Best Practices
+
+1. **Enable Early** - Call `EnablePrometheusMetrics` before registering routes
+2. **Secure Endpoint** - Restrict `/metrics` endpoint in production (firewall, auth)
+3. **Custom Buckets** - Adjust histogram buckets based on your SLA requirements
+4. **Monitor Cardinality** - Be cautious of high-cardinality labels (user IDs, emails, etc.)
+5. **Set Up Alerts** - Configure alerts for high error rates and latency
+6. **Dashboard** - Create Grafana dashboards for real-time monitoring
+
+#### Performance
+
+The metrics middleware adds minimal overhead:
+- ~50-100 nanoseconds per request (Counter + Histogram + Gauge updates)
+- Thread-safe concurrent access
+- No memory allocations in hot path
+
+See `metrics/prometheus_test.go` for benchmark results.
+
 ## Best Practices
 
 1. **Use middleware composition** - Chain middleware in logical order (auth → validation → logging)
