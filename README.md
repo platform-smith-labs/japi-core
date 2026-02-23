@@ -123,14 +123,20 @@ func main() {
     // Or use default router and configure CORS manually later
     // r := router.NewChiRouter() // Denies all origins by default
 
-    // Register all collected routes
-    handler.RegisterCollectedRoutes(r, dbConn, logger)
+    // Create a registry for your routes
+    registry := handler.NewRegistry()
+
+    // Import your handlers (they will register with the registry)
+    // import _ "your-app/handlers" // if using package-level registration
+
+    // Register all routes with the router
+    registry.RegisterWithRouter(r, dbConn, logger)
 
     // Setup Swagger UI
     swagger.SwaggerInfo.Title = "My API"
     swagger.SwaggerInfo.Description = "API documentation"
     swagger.SwaggerInfo.Version = "1.0.0"
-    swagger.SetupSwaggerUI(r)
+    swagger.SetupSwaggerUI(r, registry)
 
     // Start server
     logger.Info("Server starting on :8080")
@@ -196,8 +202,12 @@ func CreateUser(ctx *handler.HandlerContext[CreateUserParams, CreateUserRequest]
     }, nil
 }
 
+// Package-level registry (one per package/server)
+var Server = handler.NewRegistry()
+
 // Register handler with automatic route registration
 var CreateUserHandler = handler.MakeHandler(
+    Server, // Pass the registry
     handler.RouteInfo{
         Method:      "POST",
         Path:        "/users",
@@ -507,6 +517,95 @@ users, err := db.QueryMany[User](ctx.DB, query, args...)
 // v2.0.0
 users, err := db.QueryMany[User](ctx.Context, ctx.DB, query, args...)
 ```
+
+### Multi-Server Applications
+
+japi-core v3.0.0 supports running multiple servers with independent route sets in the same application. This is useful for:
+- Separating public API and admin interfaces
+- Running services on different ports with different routes
+- Microservices architectures
+- Different authentication requirements per server
+
+#### Basic Multi-Server Setup
+
+```go
+// handlers1/handlers.go (API Server)
+package handlers1
+
+import "github.com/platform-smith-labs/japi-core/handler"
+
+// One registry per server/package
+var Server = handler.NewRegistry()
+
+var GetUser = handler.MakeHandler(
+    Server,
+    handler.RouteInfo{Method: "GET", Path: "/users/{id}"},
+    getUserHandler,
+    typed.ParseParams[...](),
+    typed.ResponseJSON[...](),
+)
+
+var CreateUser = handler.MakeHandler(
+    Server,
+    handler.RouteInfo{Method: "POST", Path: "/users"},
+    createUserHandler,
+    typed.ParseBody[...](),
+    typed.ResponseJSON[...](),
+)
+```
+
+```go
+// handlers2/handlers.go (Admin Server)
+package handlers2
+
+import "github.com/platform-smith-labs/japi-core/handler"
+
+// Separate registry for admin server
+var Server = handler.NewRegistry()
+
+var AdminDashboard = handler.MakeHandler(
+    Server,
+    handler.RouteInfo{Method: "GET", Path: "/dashboard"},
+    dashboardHandler,
+    typed.RequireAuth[...]("secret", true),
+    typed.ResponseJSON[...](),
+)
+```
+
+```go
+// main.go
+package main
+
+import (
+    "your-app/handlers1"
+    "your-app/handlers2"
+)
+
+func main() {
+    db, _ := db.Connect(config)
+    logger := slog.Default()
+
+    // API Server on :8080
+    apiRouter := router.NewChiRouter()
+    handlers1.Server.RegisterWithRouter(apiRouter, db, logger)
+    swagger.SetupSwaggerUI(apiRouter, handlers1.Server)
+    go http.ListenAndServe(":8080", apiRouter)
+
+    // Admin Server on :8081
+    adminRouter := router.NewChiRouter()
+    handlers2.Server.RegisterWithRouter(adminRouter, db, logger)
+    swagger.SetupSwaggerUI(adminRouter, handlers2.Server)
+    http.ListenAndServe(":8081", adminRouter)
+}
+```
+
+#### Benefits of Multi-Server Architecture
+
+✅ **Isolated route sets** - Each server has completely independent routes
+✅ **Different middleware** - Apply different auth/cors/logging per server
+✅ **Independent scaling** - Scale API and admin separately
+✅ **Clear separation** - Organize code by server responsibility
+✅ **Test isolation** - Test each server independently
 
 ### Connection Pool Configuration
 

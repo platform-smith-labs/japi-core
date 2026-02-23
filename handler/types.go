@@ -77,16 +77,24 @@ type PendingRoute struct {
 	MiddlewareNames []string         // Names of middleware functions applied to this route
 }
 
-// Global route collection
-var (
-	globalRoutes = make([]PendingRoute, 0)
-	routesMutex  sync.RWMutex
-)
+// Registry holds routes for a server instance
+type Registry struct {
+	routes []PendingRoute
+	mu     sync.RWMutex
+}
+
+// NewRegistry creates a new route registry for a server
+func NewRegistry() *Registry {
+	return &Registry{
+		routes: make([]PendingRoute, 0),
+	}
+}
 
 // MakeHandler creates a handler with automatic route registration and middleware composition
-// Usage: MakeHandler(RouteInfo{Method: "POST", Path: "/api/v1/endpoint"}, baseHandler, middleware...)
+// Usage: handler.MakeHandler(registry, RouteInfo{Method: "POST", Path: "/api/v1/endpoint"}, baseHandler, middleware...)
 // Execution order: last middleware -> ... -> first middleware -> baseHandler
 func MakeHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
+	reg *Registry,
 	routeInfo RouteInfo,
 	baseHandler Handler[ParamTypeT, BodyTypeT, ResponseBodyT],
 	middleware ...Middleware[ParamTypeT, BodyTypeT, ResponseBodyT],
@@ -105,39 +113,39 @@ func MakeHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 	}
 
 	// Wrap the fully composed handler in TypedHandler and register with route information
-	routesMutex.Lock()
-	globalRoutes = append(globalRoutes, PendingRoute{
+	reg.mu.Lock()
+	reg.routes = append(reg.routes, PendingRoute{
 		Method:          routeInfo.Method,
 		Path:            routeInfo.Path,
 		Handler:         TypedHandler[ParamTypeT, BodyTypeT, ResponseBodyT]{handler: handler},
 		RouteInfo:       routeInfo,
 		MiddlewareNames: middlewareNames,
 	})
-	routesMutex.Unlock()
+	reg.mu.Unlock()
 
 	return handler
 }
 
-// RegisterCollectedRoutes processes all collected routes and registers them with the chi router
-func RegisterCollectedRoutes(r chi.Router, database *sql.DB, logger *slog.Logger) {
-	routesMutex.RLock()
-	defer routesMutex.RUnlock()
+// RegisterWithRouter processes all collected routes and registers them with the chi router
+func (reg *Registry) RegisterWithRouter(r chi.Router, database *sql.DB, logger *slog.Logger) {
+	reg.mu.RLock()
+	defer reg.mu.RUnlock()
 
-	for _, route := range globalRoutes {
+	for _, route := range reg.routes {
 		// Use interface method to adapt handler - no type assertions needed!
 		adaptedHandler := route.Handler.Adapt(database, logger)
 		registerRoute(r, route.Method, route.Path, adaptedHandler)
 	}
 }
 
-// GetCollectedRoutes returns a copy of all collected routes for reflection/documentation
-func GetCollectedRoutes() []PendingRoute {
-	routesMutex.RLock()
-	defer routesMutex.RUnlock()
+// GetRoutes returns a copy of all collected routes for reflection/documentation
+func (reg *Registry) GetRoutes() []PendingRoute {
+	reg.mu.RLock()
+	defer reg.mu.RUnlock()
 
 	// Return a copy to prevent external modifications
-	routes := make([]PendingRoute, len(globalRoutes))
-	copy(routes, globalRoutes)
+	routes := make([]PendingRoute, len(reg.routes))
+	copy(routes, reg.routes)
 	return routes
 }
 

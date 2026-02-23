@@ -51,7 +51,7 @@ const docTemplate = `{
 }`
 
 // GenerateSpec creates an OpenAPI spec from collected routes using reflection
-func GenerateSpec() *spec.Swagger {
+func GenerateSpec(registry *handler.Registry) *spec.Swagger {
 	swagger := &spec.Swagger{
 		SwaggerProps: spec.SwaggerProps{
 			Swagger: "2.0",
@@ -81,7 +81,7 @@ func GenerateSpec() *spec.Swagger {
 	}
 
 	// Process collected routes from handler package
-	routes := handler.GetCollectedRoutes()
+	routes := registry.GetRoutes()
 
 	// Group routes by path to handle multiple HTTP methods for the same path
 	routesByPath := make(map[string][]handler.PendingRoute)
@@ -884,7 +884,7 @@ func addStandardResponses(operation *spec.Operation, swagger *spec.Swagger) {
 }
 
 // GenerateJSON returns the OpenAPI spec as JSON
-func GenerateJSON() ([]byte, error) {
-	spec := GenerateSpec()
+func GenerateJSON(registry *handler.Registry) ([]byte, error) {
+	spec := GenerateSpec(registry)
 	return json.MarshalIndent(spec, "", "  ")
 }
