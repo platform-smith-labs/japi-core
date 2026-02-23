@@ -1067,9 +1067,11 @@ func userExistsValidator(db *sql.DB) validator.Func {
 - `typed.ResponseJSON[...]()` - Write JSON response
 - `typed.ResponseJSONFile[...](filename)` - Write downloadable JSON file
 - `typed.RequireAuth[...](jwtSecret, validateUser)` - JWT authentication
-- `typed.WithLogging[...]()` - Structured logging with timing
+- `typed.WithRequestID` - Enrich context with request ID for tracing (types inferred)
+- `typed.WithLogging` - Structured logging with timing (types inferred)
 
 #### HTTP Middleware
+- `http.WithRequestID()` - Generate/propagate request IDs for correlation
 - `http.WithLogging(logger)` - Standard HTTP logging
 - `http.WithContentType(contentType)` - Set response Content-Type
 
@@ -1201,6 +1203,162 @@ r := router.NewChiRouterWithCORS(getAllowedOrigins())
 5. **Use prepared statements** - Prevent SQL injection (already done by `db` package)
 6. **Set security headers** - Add CSP, HSTS, X-Frame-Options headers
 7. **Sanitize error messages** - Don't expose internal details in production
+
+## Observability
+
+### Request ID Middleware
+
+Request IDs are unique identifiers assigned to each HTTP request for correlation and tracing across distributed systems. japi-core provides built-in middleware for generating and propagating request IDs.
+
+#### Why Request IDs Matter
+
+- **Distributed Tracing** - Track requests across microservices
+- **Log Correlation** - Group all logs from the same request
+- **Debugging** - Identify problematic requests in production
+- **Customer Support** - Reference specific requests when troubleshooting
+- **Performance Analysis** - Track request latency across services
+
+#### Usage
+
+**Step 1: Apply HTTP Middleware**
+
+Add `http.WithRequestID()` to your router to generate/propagate request IDs:
+
+```go
+import (
+    "github.com/platform-smith-labs/japi-core/router"
+    httpMiddleware "github.com/platform-smith-labs/japi-core/middleware/http"
+)
+
+func main() {
+    r := router.NewChiRouter()
+
+    // Apply request ID middleware early in the chain
+    r.Use(httpMiddleware.WithRequestID())
+
+    // ... register routes ...
+}
+```
+
+**Step 2: Apply Typed Middleware**
+
+Enrich your `HandlerContext` with the request ID using `typed.WithRequestID()`:
+
+```go
+import (
+    "github.com/platform-smith-labs/japi-core/handler"
+    "github.com/platform-smith-labs/japi-core/middleware/typed"
+)
+
+var CreateUser = handler.MakeHandler(
+    Server,
+    handler.RouteInfo{Method: "POST", Path: "/users"},
+    createUserHandler,
+    typed.WithRequestID,  // Type parameters inferred from createUserHandler!
+    typed.WithLogging,
+)
+```
+
+**Step 3: Access Request ID in Handlers**
+
+```go
+func createUserHandler(
+    ctx handler.HandlerContext[CreateUserParams, CreateUserBody],
+    w http.ResponseWriter,
+    r *http.Request,
+) (UserResponse, error) {
+    // Access request ID from context
+    if ctx.RequestID.HasValue() {
+        requestID := ctx.RequestID.Value()
+        ctx.Logger.Info("Creating user", "request_id", requestID)
+    }
+
+    // Your business logic...
+}
+```
+
+#### Request ID Propagation
+
+**Incoming Requests**
+
+The `http.WithRequestID()` middleware:
+1. Reads `X-Request-ID` header from incoming requests
+2. Generates a new UUID if no header is present
+3. Stores the request ID in the request context
+4. Adds `X-Request-ID` to response headers
+
+**Outgoing Requests**
+
+When calling other services, propagate the request ID:
+
+```go
+func callExternalService(ctx handler.HandlerContext[P, B], url string) error {
+    req, _ := http.NewRequest("GET", url, nil)
+
+    // Propagate request ID to downstream service
+    if ctx.RequestID.HasValue() {
+        req.Header.Set("X-Request-ID", ctx.RequestID.Value())
+    }
+
+    // Make request...
+}
+```
+
+#### Structured Logging with Request IDs
+
+The `typed.WithRequestID()` middleware automatically enriches your logger with the request ID:
+
+```go
+// Logger automatically includes request_id in all log statements
+ctx.Logger.Info("User created successfully", "user_id", user.ID)
+// Output: {"level":"INFO","msg":"User created successfully","user_id":"123","request_id":"550e8400-e29b-41d4-a716-446655440000"}
+```
+
+#### Type Inference
+
+Go automatically infers type parameters for `WithRequestID` and `WithLogging` middleware when used in `MakeHandler`:
+
+```go
+// Type parameters automatically inferred from createUserHandler signature ✨
+var CreateUser = handler.MakeHandler(
+    Server,
+    handler.RouteInfo{Method: "POST", Path: "/users"},
+    createUserHandler,  // Handler signature defines ParamTypeT, BodyTypeT, ResponseBodyT
+    typed.WithRequestID,  // Types inferred! No need for WithRequestID[Params, Body, Response]
+    typed.WithLogging,    // Types inferred! No need for WithLogging[Params, Body, Response]
+)
+```
+
+**When explicit types ARE needed:**
+
+Explicit type parameters are only needed when building middleware outside of `MakeHandler`:
+
+```go
+// Building middleware separately requires explicit types
+middleware := typed.WithRequestID[Params, Body, Response]
+
+// Then use it later
+MakeHandler(Server, routeInfo, handler, middleware)
+```
+
+But in the common case (passing middleware directly to `MakeHandler`), **type inference works automatically**!
+
+#### Best Practices
+
+1. **Apply Early** - Add `http.WithRequestID()` as one of the first middleware in your router
+2. **Always Log** - Include request IDs in all log statements for correlation
+3. **Propagate Downstream** - Pass request IDs to all external service calls
+4. **Client-Provided IDs** - Accept request IDs from clients for end-to-end tracing
+5. **Unique Format** - Use UUIDs for uniqueness across distributed systems
+6. **Use Type Inference** - No need for explicit type parameters in most cases
+
+#### Integration with APM Tools
+
+Request IDs work seamlessly with APM tools like:
+- **DataDog** - Automatically correlates logs with traces
+- **New Relic** - Links requests across distributed services
+- **Sentry** - Groups errors by request
+- **Elastic APM** - Traces requests through microservices
 
 ## Best Practices
 

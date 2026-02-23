@@ -28,10 +28,11 @@ type HandlerContext[ParamTypeT any, BodyTypeT any] struct {
 	Logger *slog.Logger
 
 	// Request-scoped data
-	Params  Nullable[ParamTypeT] // Optional parameters from URL/query
-	Body    Nullable[BodyTypeT]  // Optional request body
-	BodyRaw Nullable[[]byte]     // Raw request body bytes
-	Headers Nullable[http.Header] // HTTP request headers
+	Params    Nullable[ParamTypeT] // Optional parameters from URL/query
+	Body      Nullable[BodyTypeT]  // Optional request body
+	BodyRaw   Nullable[[]byte]     // Raw request body bytes
+	Headers   Nullable[http.Header] // HTTP request headers
+	RequestID Nullable[string]     // Request ID for correlation and tracing (set by RequestID middleware)
 
 	// Authentication data (set by RequireAuth middleware)
 	UserUUID    Nullable[uuid.UUID] // Authenticated user UUID from JWT
