@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,10 @@ import (
 // ParamTypeT represents the type of parameters (URL/query params)
 // BodyTypeT represents the type of request body
 type HandlerContext[ParamTypeT any, BodyTypeT any] struct {
+	// Request context (propagated from r.Context())
+	// Used for cancellation, timeouts, and trace propagation
+	Context context.Context
+
 	// Application dependencies
 	DB     *sql.DB
 	Logger *slog.Logger

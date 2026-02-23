@@ -17,11 +17,13 @@ type Querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// WithTx executes a function within a database transaction
-func WithTx[T any](db *sql.DB, fn func(*sql.Tx) (T, error)) (T, error) {
+// WithTx executes a function within a database transaction.
+// The provided context is used for cancellation and timeout support.
+// If the context is cancelled, the transaction will be rolled back.
+func WithTx[T any](ctx context.Context, db *sql.DB, fn func(context.Context, *sql.Tx) (T, error)) (T, error) {
 	var zero T
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return zero, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -33,7 +35,7 @@ func WithTx[T any](db *sql.DB, fn func(*sql.Tx) (T, error)) (T, error) {
 		}
 	}()
 
-	result, err := fn(tx)
+	result, err := fn(ctx, tx)
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
 			return zero, fmt.Errorf("transaction failed: %v, rollback failed: %v", err, rbErr)
@@ -48,9 +50,9 @@ func WithTx[T any](db *sql.DB, fn func(*sql.Tx) (T, error)) (T, error) {
 	return result, nil
 }
 
-// QueryMany executes a query with positional parameters and uses automatic struct scanning
-func QueryMany[T any](querier Querier, query string, args ...any) ([]T, error) {
-	ctx := context.Background()
+// QueryMany executes a query with positional parameters and uses automatic struct scanning.
+// The provided context is used for cancellation and timeout support.
+func QueryMany[T any](ctx context.Context, querier Querier, query string, args ...any) ([]T, error) {
 	rows, err := querier.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
@@ -62,8 +64,9 @@ func QueryMany[T any](querier Querier, query string, args ...any) ([]T, error) {
 	return results, err
 }
 
-// QueryOne executes a single row query with positional parameters and uses automatic struct scanning
-func QueryOne[T any](querier Querier, query string, args ...any) (T, error) {
+// QueryOne executes a single row query with positional parameters and uses automatic struct scanning.
+// The provided context is used for cancellation and timeout support.
+func QueryOne[T any](ctx context.Context, querier Querier, query string, args ...any) (T, error) {
 	var zero T
 
 	slog.Debug("QueryOne executing",
@@ -71,7 +74,6 @@ func QueryOne[T any](querier Querier, query string, args ...any) (T, error) {
 		"args", args,
 	)
 
-	ctx := context.Background()
 	rows, err := querier.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.Error("QueryOne failed",
@@ -101,9 +103,9 @@ func QueryOne[T any](querier Querier, query string, args ...any) (T, error) {
 	return result, err
 }
 
-// Exec executes a query with positional parameters without returning results
-func Exec(querier Querier, query string, args ...any) (sql.Result, error) {
-	ctx := context.Background()
+// Exec executes a query with positional parameters without returning results.
+// The provided context is used for cancellation and timeout support.
+func Exec(ctx context.Context, querier Querier, query string, args ...any) (sql.Result, error) {
 	result, err := querier.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("exec failed: %w", err)

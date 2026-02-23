@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -32,14 +34,18 @@ func AdaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 	handler Handler[ParamTypeT, BodyTypeT, ResponseBodyT],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract request context for cancellation and timeout support
+		requestCtx := r.Context()
+
 		// Log database connection status for debugging
 		logger.Debug("AdaptHandler creating context",
 			"db_nil", db == nil,
 			"path", r.URL.Path,
 		)
 
-		// Create handler context with application dependencies
+		// Create handler context with application dependencies and request context
 		ctx := HandlerContext[ParamTypeT, BodyTypeT]{
+			Context:     requestCtx, // Propagate HTTP request context
 			DB:          db,
 			Logger:      logger,
 			UserUUID:    Nil[uuid.UUID](), // No auth by default
@@ -49,6 +55,22 @@ func AdaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Execute the handler and handle response/errors
 		_, err := handler(ctx, w, r)
 		if err != nil {
+			// Handle context-specific errors
+			if errors.Is(err, context.Canceled) {
+				// Client disconnected - don't write response
+				logger.Info("Request cancelled by client", "path", r.URL.Path)
+				return
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				// Request timeout
+				logger.Error("Request timeout", "path", r.URL.Path)
+				core.WriteAPIError(w, r, *core.NewAPIError(
+					http.StatusGatewayTimeout,
+					"Request timeout",
+				))
+				return
+			}
+
 			// Log the error for debugging
 			logger.Error("Handler error", "error", err.Error(), "path", r.URL.Path)
 
