@@ -1,6 +1,6 @@
 module github.com/platform-smith-labs/japi-core
 
-go 1.24.0
+go 1.25.0
 
 toolchain go1.25.8
 
@@ -13,7 +13,7 @@ require (
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.6
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/lib/pq v1.10.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/swaggo/http-swagger v1.3.4
