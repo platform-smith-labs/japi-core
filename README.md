@@ -1100,7 +1100,29 @@ func userExistsValidator(db *sql.DB) validator.Func {
 ### Router Package
 
 #### Functions
-- `router.NewChiRouter()` - Create Chi router with standard middleware (CORS, logging, etc.)
+- `router.NewChiRouter()` - Create Chi router with secure defaults (CORS deny-all, standard middleware)
+- `router.NewChiRouterWithCORS(origins []string)` - Create Chi router with the given origins allowed; all other CORS settings use secure defaults
+- `router.NewChiRouterWithOptions(opts ...RouterOption)` - Create Chi router with fully customisable CORS via functional options
+
+#### CORS Option Functions
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `WithAllowedOrigins([]string)` | `[]` (deny all) | Origins permitted to make cross-origin requests |
+| `WithAllowedMethods([]string)` | `GET POST PUT PATCH DELETE HEAD OPTIONS` | HTTP methods permitted in CORS requests |
+| `WithAllowedHeaders([]string)` | `Accept Authorization Content-Type X-CSRF-Token` | Request headers permitted in CORS requests |
+| `WithExposedHeaders([]string)` | `Link` | Response headers exposed to the browser |
+| `WithAllowCredentials(bool)` | `false` | Allow cookies/HTTP auth in cross-origin requests |
+| `WithMaxAge(int)` | `300` | Seconds the browser may cache preflight results |
+
+**Example — restrict origins and use a reduced method set:**
+
+```go
+r := router.NewChiRouterWithOptions(
+    router.WithAllowedOrigins([]string{"https://app.example.com"}),
+    router.WithAllowedMethods([]string{"GET", "POST", "PATCH"}),
+)
+```
 
 ## Migrating Existing Projects
 
@@ -1157,19 +1179,14 @@ r := router.NewChiRouterWithCORS([]string{
 })
 ```
 
-**Option 2: Manual Configuration**
+**Option 2: Using NewChiRouterWithOptions (Full Control)**
 
 ```go
-r := router.NewChiRouter() // Denies all by default
-
-// Add CORS middleware with your allowed origins
-r.Use(cors.Handler(cors.Options{
-    AllowedOrigins:   []string{"https://yourdomain.com"},
-    AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-    AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-    AllowCredentials: false,
-    MaxAge:           300,
-}))
+r := router.NewChiRouterWithOptions(
+    router.WithAllowedOrigins([]string{"https://yourdomain.com"}),
+    router.WithAllowedMethods([]string{"GET", "POST", "PATCH"}), // override default list
+    router.WithAllowedHeaders([]string{"Authorization", "Content-Type", "X-Request-ID"}),
+)
 ```
 
 **For Local Development:**
