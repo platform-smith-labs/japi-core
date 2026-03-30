@@ -64,7 +64,7 @@ japi-core/
 ## Installation
 
 ```bash
-go get github.com/platform-smith-labs/japi-core
+go get github.com/platform-smith-labs/japi-core/v3
 ```
 
 ## Quick Start
@@ -80,10 +80,10 @@ import (
     "net/http"
     "os"
 
-    "github.com/platform-smith-labs/japi-core/db"
-    "github.com/platform-smith-labs/japi-core/router"
-    "github.com/platform-smith-labs/japi-core/handler"
-    "github.com/platform-smith-labs/japi-core/swagger"
+    "github.com/platform-smith-labs/japi-core/v3/db"
+    "github.com/platform-smith-labs/japi-core/v3/router"
+    "github.com/platform-smith-labs/japi-core/v3/handler"
+    "github.com/platform-smith-labs/japi-core/v3/swagger"
 )
 
 func main() {
@@ -153,9 +153,9 @@ import (
     "database/sql"
     "net/http"
 
-    "github.com/platform-smith-labs/japi-core/core"
-    "github.com/platform-smith-labs/japi-core/handler"
-    "github.com/platform-smith-labs/japi-core/middleware/typed"
+    "github.com/platform-smith-labs/japi-core/v3/core"
+    "github.com/platform-smith-labs/japi-core/v3/handler"
+    "github.com/platform-smith-labs/japi-core/v3/middleware/typed"
 )
 
 // Request/Response types
@@ -281,7 +281,7 @@ var GetUserHandler = handler.MakeHandler(
 ### Using Authentication Middleware
 
 ```go
-import "github.com/platform-smith-labs/japi-core/middleware/typed"
+import "github.com/platform-smith-labs/japi-core/v3/middleware/typed"
 
 type ProtectedParams struct{}
 type ProtectedRequest struct{}
@@ -318,7 +318,7 @@ var ProtectedHandlerRegistration = handler.MakeHandler(
 ### Database Queries with Type Safety
 
 ```go
-import "github.com/platform-smith-labs/japi-core/db"
+import "github.com/platform-smith-labs/japi-core/v3/db"
 
 type User struct {
     ID    string `db:"id"`
@@ -544,7 +544,7 @@ japi-core v3.0.0 supports running multiple servers with independent route sets i
 // handlers1/handlers.go (API Server)
 package handlers1
 
-import "github.com/platform-smith-labs/japi-core/handler"
+import "github.com/platform-smith-labs/japi-core/v3/handler"
 
 // One registry per server/package
 var Server = handler.NewRegistry()
@@ -570,7 +570,7 @@ var CreateUser = handler.MakeHandler(
 // handlers2/handlers.go (Admin Server)
 package handlers2
 
-import "github.com/platform-smith-labs/japi-core/handler"
+import "github.com/platform-smith-labs/japi-core/v3/handler"
 
 // Separate registry for admin server
 var Server = handler.NewRegistry()
@@ -757,7 +757,7 @@ log.Printf("Max lifetime closed: %d", stats.MaxLifetimeClosed)
 Nullable types provide explicit optionality for request-scoped data. Middleware populates Nullable values, and handlers can safely assume they're present.
 
 ```go
-import "github.com/platform-smith-labs/japi-core/handler"
+import "github.com/platform-smith-labs/japi-core/v3/handler"
 
 type UpdateUserRequest struct {
     Name  handler.Nullable[string] `json:"name"`
@@ -837,7 +837,7 @@ func HandleOptional(ctx HandlerContext) (*Response, error) {
 ### CSV File Upload Handler
 
 ```go
-import "github.com/platform-smith-labs/japi-core/middleware/typed"
+import "github.com/platform-smith-labs/japi-core/v3/middleware/typed"
 
 type ImportUsersParams struct{}
 
@@ -1130,17 +1130,17 @@ To migrate an existing project to use japi-core:
 
 1. **Install the library**
    ```bash
-   go get github.com/platform-smith-labs/japi-core
+   go get github.com/platform-smith-labs/japi-core/v3
    ```
 
 2. **Update imports**
    Replace your custom API framework imports with japi-core packages:
    ```go
    import (
-       "github.com/platform-smith-labs/japi-core/core"
-       "github.com/platform-smith-labs/japi-core/handler"
-       "github.com/platform-smith-labs/japi-core/middleware/typed"
-       "github.com/platform-smith-labs/japi-core/db"
+       "github.com/platform-smith-labs/japi-core/v3/core"
+       "github.com/platform-smith-labs/japi-core/v3/handler"
+       "github.com/platform-smith-labs/japi-core/v3/middleware/typed"
+       "github.com/platform-smith-labs/japi-core/v3/db"
    )
    ```
 
@@ -1258,8 +1258,8 @@ Add `http.WithRequestID()` to your router to generate/propagate request IDs:
 
 ```go
 import (
-    "github.com/platform-smith-labs/japi-core/router"
-    httpMiddleware "github.com/platform-smith-labs/japi-core/middleware/http"
+    "github.com/platform-smith-labs/japi-core/v3/router"
+    httpMiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
 )
 
 func main() {
@@ -1278,8 +1278,8 @@ Enrich your `HandlerContext` with the request ID using `typed.WithRequestID()`:
 
 ```go
 import (
-    "github.com/platform-smith-labs/japi-core/handler"
-    "github.com/platform-smith-labs/japi-core/middleware/typed"
+    "github.com/platform-smith-labs/japi-core/v3/handler"
+    "github.com/platform-smith-labs/japi-core/v3/middleware/typed"
 )
 
 var CreateUser = handler.MakeHandler(
@@ -1429,8 +1429,8 @@ Enable Prometheus metrics with default settings:
 
 ```go
 import (
-    "github.com/platform-smith-labs/japi-core/metrics"
-    "github.com/platform-smith-labs/japi-core/router"
+    "github.com/platform-smith-labs/japi-core/v3/metrics"
+    "github.com/platform-smith-labs/japi-core/v3/router"
 )
 
 func main() {
@@ -1452,7 +1452,7 @@ The metrics endpoint will be available at `http://localhost:8080/metrics`
 Customize histogram buckets, namespace, and subsystem:
 
 ```go
-import "github.com/platform-smith-labs/japi-core/metrics"
+import "github.com/platform-smith-labs/japi-core/v3/metrics"
 
 func main() {
     r := router.NewChiRouter()

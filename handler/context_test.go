@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platform-smith-labs/japi-core/core"
+	"github.com/platform-smith-labs/japi-core/v3/core"
 )
 
 // TestAdapterContextExtraction verifies that adapter extracts request context

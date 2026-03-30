@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/platform-smith-labs/japi-core/core"
+	"github.com/platform-smith-labs/japi-core/v3/core"
 )
 
 // Nullable represents an optional value that may or may not contain data.

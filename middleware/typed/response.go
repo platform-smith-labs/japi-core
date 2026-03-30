@@ -3,8 +3,8 @@ package typed
 import (
 	"net/http"
 
-	"github.com/platform-smith-labs/japi-core/core"
-	"github.com/platform-smith-labs/japi-core/handler"
+	"github.com/platform-smith-labs/japi-core/v3/core"
+	"github.com/platform-smith-labs/japi-core/v3/handler"
 )
 
 // ResponseJSON handles writing successful responses as JSON.

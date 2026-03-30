@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/platform-smith-labs/japi-core/handler"
+	"github.com/platform-smith-labs/japi-core/v3/handler"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 

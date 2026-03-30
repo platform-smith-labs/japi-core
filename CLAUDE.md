@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Purpose
 
-**japi-core** is a type-safe Go framework/library for building REST APIs with PostgreSQL. It is consumed by other Go services via `go get github.com/platform-smith-labs/japi-core`.
+**japi-core** is a type-safe Go framework/library for building REST APIs with PostgreSQL. It is consumed by other Go services via `go get github.com/platform-smith-labs/japi-core/v3`.
 
 The `.claude/` directory in this repo is a reusable Claude Code workflow template. Copy `.claude/` to other projects to enable intelligent development workflows.
 

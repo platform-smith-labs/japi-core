@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/platform-smith-labs/japi-core/handler"
-	httpMiddleware "github.com/platform-smith-labs/japi-core/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v3/handler"
+	httpMiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
 )
 
 // WithRequestID enriches HandlerContext with request ID for correlation and tracing.

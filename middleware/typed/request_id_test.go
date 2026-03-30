@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/platform-smith-labs/japi-core/handler"
-	httpMiddleware "github.com/platform-smith-labs/japi-core/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v3/handler"
+	httpMiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
 )
 
 // TestWithRequestID_EnrichesContext verifies request ID is added to HandlerContext

@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/platform-smith-labs/japi-core/core"
-	"github.com/platform-smith-labs/japi-core/handler"
+	"github.com/platform-smith-labs/japi-core/v3/core"
+	"github.com/platform-smith-labs/japi-core/v3/handler"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"

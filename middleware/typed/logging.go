@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/platform-smith-labs/japi-core/handler"
+	"github.com/platform-smith-labs/japi-core/v3/handler"
 )
 
 // WithLogging creates structured logging middleware for typed handlers.

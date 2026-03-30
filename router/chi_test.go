@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/platform-smith-labs/japi-core/router"
+	"github.com/platform-smith-labs/japi-core/v3/router"
 )
 
 // defaultMethods is the complete set that defaultRouterConfig must expose.
