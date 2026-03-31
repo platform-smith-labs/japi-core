@@ -11,6 +11,7 @@ Last Updated: 2026-03-30
 
 | ID | Title | Status | Created | Artifacts |
 |----|-------|--------|---------|-----------|
+| work-0003 | Go Module Path v3 Suffix Fix | ✅ Completed | 2026-03-30 | R, Req, P, I |
 | work-0002 | Go Dependency Upgrade to Latest Versions | ✅ Completed | 2026-03-30 | R, Req, P, I |
 | work-0001 | CORS AllowedMethods Fix & Override API | ✅ Completed | 2026-03-30 | R, Req, P, I |
 

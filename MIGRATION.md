@@ -322,9 +322,9 @@ Add `context` and `errors` to your imports if handling context errors:
 import (
     "context"
     "errors"
-    "github.com/platform-smith-labs/japi-core/core"
-    "github.com/platform-smith-labs/japi-core/handler"
-    "github.com/platform-smith-labs/japi-core/db"
+    "github.com/platform-smith-labs/japi-core/v3/core"
+    "github.com/platform-smith-labs/japi-core/v3/handler"
+    "github.com/platform-smith-labs/japi-core/v3/db"
 )
 ```
 
