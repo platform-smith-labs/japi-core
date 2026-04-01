@@ -1,9 +1,14 @@
 package handler
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // TestNewRegistry verifies registry creation
@@ -260,6 +265,91 @@ func TestTypedHandler(t *testing.T) {
 		adapted := th.Adapt(nil, nil)
 		if adapted == nil {
 			t.Error("Expected non-nil adapted handler")
+		}
+	})
+}
+
+// TestRegisterWithRouterWithServices verifies service injection via functional options
+func TestRegisterWithRouterWithServices(t *testing.T) {
+	type TestServices struct{ Value string }
+	svc := TestServices{Value: "injected"}
+
+	t.Run("services injected into handler via WithServices option", func(t *testing.T) {
+		reg := NewRegistry()
+		var capturedServices any
+
+		MakeHandler(reg, RouteInfo{Method: "GET", Path: "/test"},
+			func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
+				capturedServices = ctx.Services
+				w.WriteHeader(http.StatusOK)
+				return struct{}{}, nil
+			},
+		)
+
+		r := chi.NewRouter()
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		reg.RegisterWithRouter(r, nil, logger, WithServices(svc))
+
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		typed, ok := capturedServices.(TestServices)
+		if !ok {
+			t.Fatalf("expected TestServices, got %T", capturedServices)
+		}
+		if typed.Value != "injected" {
+			t.Errorf("expected 'injected', got %q", typed.Value)
+		}
+	})
+
+	t.Run("no services — backward compatible", func(t *testing.T) {
+		reg := NewRegistry()
+		var capturedServices any
+
+		MakeHandler(reg, RouteInfo{Method: "GET", Path: "/test"},
+			func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
+				capturedServices = ctx.Services
+				w.WriteHeader(http.StatusOK)
+				return struct{}{}, nil
+			},
+		)
+
+		r := chi.NewRouter()
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		reg.RegisterWithRouter(r, nil, logger) // no options
+
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if capturedServices != nil {
+			t.Errorf("expected nil services, got %v", capturedServices)
+		}
+	})
+
+	t.Run("WithServices nil does not panic", func(t *testing.T) {
+		reg := NewRegistry()
+		MakeHandler(reg, RouteInfo{Method: "GET", Path: "/test"},
+			func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
+				w.WriteHeader(http.StatusOK)
+				return struct{}{}, nil
+			},
+		)
+
+		r := chi.NewRouter()
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		reg.RegisterWithRouter(r, nil, logger, WithServices(nil))
+
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
 		}
 	})
 }

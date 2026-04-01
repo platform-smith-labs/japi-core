@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -336,6 +337,66 @@ func BenchmarkContextExtraction(b *testing.B) {
 		w := httptest.NewRecorder()
 		adapted(w, req)
 	}
+}
+
+// TestAdaptHandlerWithServices verifies service injection via AdaptHandlerWithServices
+func TestAdaptHandlerWithServices(t *testing.T) {
+	t.Run("services populated in context", func(t *testing.T) {
+		type TestServices struct{ Name string }
+		svc := TestServices{Name: "test-service"}
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+		var capturedServices any
+		handler := func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
+			capturedServices = ctx.Services
+			return struct{}{}, nil
+		}
+
+		adapted := AdaptHandlerWithServices[struct{}, struct{}, struct{}](nil, logger, svc, handler)
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		adapted.ServeHTTP(w, req)
+
+		if capturedServices == nil {
+			t.Fatal("expected services to be non-nil")
+		}
+		typed, ok := capturedServices.(TestServices)
+		if !ok {
+			t.Fatalf("expected TestServices, got %T", capturedServices)
+		}
+		if typed.Name != "test-service" {
+			t.Errorf("expected Name='test-service', got %q", typed.Name)
+		}
+	})
+
+	t.Run("nil services does not panic", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		handler := func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
+			if ctx.Services != nil {
+				t.Error("expected nil services")
+			}
+			return struct{}{}, nil
+		}
+		adapted := AdaptHandlerWithServices[struct{}, struct{}, struct{}](nil, logger, nil, handler)
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		adapted.ServeHTTP(w, req)
+	})
+}
+
+// TestAdaptHandlerServicesNilByDefault verifies Services is nil when using AdaptHandler (no services)
+func TestAdaptHandlerServicesNilByDefault(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
+		if ctx.Services != nil {
+			t.Error("expected nil services for AdaptHandler (no services)")
+		}
+		return struct{}{}, nil
+	}
+	adapted := AdaptHandler[struct{}, struct{}, struct{}](nil, logger, handler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	adapted.ServeHTTP(w, req)
 }
 
 // BenchmarkContextCancellationCheck benchmarks checking for cancellation

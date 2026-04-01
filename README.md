@@ -224,6 +224,44 @@ var CreateUserHandler = handler.MakeHandler(
 )
 ```
 
+## Service Injection
+
+Handlers often need application-level dependencies beyond `DB` and `Logger` — HTTP clients, cache connections, message queues, etc. Use `WithServices` to inject a typed services struct into all handlers via `HandlerContext.Services`.
+
+### Setup
+
+```go
+// 1. Define your services struct (in your app, not in japi-core)
+type AppServices struct {
+    OrchClient   *httpclient.Client
+    CacheClient  *redis.Client
+}
+
+// 2. Typed accessor — one type assertion at the boundary, fully typed after
+func GetServices[P, B any](ctx handler.HandlerContext[P, B]) AppServices {
+    return ctx.Services.(AppServices)
+}
+
+// 3. Register with services (RegisterWithRouter still works without options)
+appServices := AppServices{OrchClient: orchClient, CacheClient: cacheClient}
+handlers.Server.RegisterWithRouter(r, db, logger, handler.WithServices(appServices))
+```
+
+### In Handlers
+
+```go
+var ListTasksHandler = handler.MakeHandler(Server,
+    handler.RouteInfo{Method: "GET", Path: "/api/v1/tasks"},
+    func(ctx handler.HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (TasksResponse, error) {
+        svc := GetServices(ctx)
+        resp, err := svc.OrchClient.Get(r.Context(), "/api/v1/tasks")
+        // ...
+    },
+)
+```
+
+`WithServices` is backward compatible — existing code that calls `RegisterWithRouter(r, db, logger)` without options continues to work unchanged (`ctx.Services` is `nil`).
+
 ## Usage Examples
 
 ### Working with URL Parameters
