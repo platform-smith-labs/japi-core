@@ -33,6 +33,35 @@ func AdaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 	logger *slog.Logger,
 	handler Handler[ParamTypeT, BodyTypeT, ResponseBodyT],
 ) http.HandlerFunc {
+	return adaptHandler(db, logger, nil, handler)
+}
+
+// AdaptHandlerWithServices converts a typed Handler to http.HandlerFunc with service injection.
+// Like AdaptHandler, but populates ctx.Services with the provided value.
+//
+// Parameters:
+//   - db: Database connection to inject into handler context
+//   - logger: Logger instance to inject into handler context
+//   - services: Application-defined dependencies (opaque to japi-core)
+//   - handler: The typed handler to adapt
+//
+// Returns: http.HandlerFunc compatible with Chi router
+func AdaptHandlerWithServices[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
+	db *sql.DB,
+	logger *slog.Logger,
+	services any,
+	handler Handler[ParamTypeT, BodyTypeT, ResponseBodyT],
+) http.HandlerFunc {
+	return adaptHandler(db, logger, services, handler)
+}
+
+// adaptHandler is the shared implementation for both AdaptHandler and AdaptHandlerWithServices.
+func adaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
+	db *sql.DB,
+	logger *slog.Logger,
+	services any,
+	handler Handler[ParamTypeT, BodyTypeT, ResponseBodyT],
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract request context for cancellation and timeout support
 		requestCtx := r.Context()
@@ -48,6 +77,7 @@ func AdaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 			Context:     requestCtx, // Propagate HTTP request context
 			DB:          db,
 			Logger:      logger,
+			Services:    services,
 			UserUUID:    Nil[uuid.UUID](), // No auth by default
 			CompanyUUID: Nil[uuid.UUID](), // No auth by default
 		}

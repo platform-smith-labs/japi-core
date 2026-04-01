@@ -24,8 +24,9 @@ type HandlerContext[ParamTypeT any, BodyTypeT any] struct {
 	Context context.Context
 
 	// Application dependencies
-	DB     *sql.DB
-	Logger *slog.Logger
+	DB       *sql.DB
+	Logger   *slog.Logger
+	Services any // Application-defined dependencies (set via WithServices option)
 
 	// Request-scoped data
 	Params    Nullable[ParamTypeT] // Optional parameters from URL/query
@@ -69,6 +70,11 @@ func (th TypedHandler[ParamTypeT, BodyTypeT, ResponseBodyT]) Adapt(database *sql
 	return AdaptHandler(database, logger, th.handler)
 }
 
+// AdaptWithServices converts the typed handler to http.HandlerFunc with service injection.
+func (th TypedHandler[ParamTypeT, BodyTypeT, ResponseBodyT]) AdaptWithServices(database *sql.DB, logger *slog.Logger, services any) http.HandlerFunc {
+	return AdaptHandlerWithServices(database, logger, services, th.handler)
+}
+
 // PendingRoute stores route information for handlers that need to be registered later
 type PendingRoute struct {
 	Method          string
@@ -76,6 +82,27 @@ type PendingRoute struct {
 	Handler         AdaptableHandler // Interface that knows how to adapt itself
 	RouteInfo       RouteInfo        // Complete route metadata for documentation
 	MiddlewareNames []string         // Names of middleware functions applied to this route
+}
+
+// registrationConfig holds optional configuration applied during route registration.
+type registrationConfig struct {
+	services any
+}
+
+// RegistrationOption configures how routes are registered with the router.
+// Pass options to RegisterWithRouter to customize registration behavior.
+type RegistrationOption func(*registrationConfig)
+
+// WithServices configures application-defined dependencies to inject into all handlers.
+// The services value is opaque to japi-core — each app defines its own typed struct.
+//
+// Usage:
+//
+//	registry.RegisterWithRouter(r, db, logger, handler.WithServices(appServices))
+func WithServices(services any) RegistrationOption {
+	return func(cfg *registrationConfig) {
+		cfg.services = services
+	}
 }
 
 // Registry holds routes for a server instance
@@ -127,14 +154,30 @@ func MakeHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 	return handler
 }
 
-// RegisterWithRouter processes all collected routes and registers them with the chi router
-func (reg *Registry) RegisterWithRouter(r chi.Router, database *sql.DB, logger *slog.Logger) {
+// RegisterWithRouter processes all collected routes and registers them with the chi router.
+// Pass RegistrationOption values to customize behavior (e.g., WithServices for dependency injection).
+func (reg *Registry) RegisterWithRouter(r chi.Router, database *sql.DB, logger *slog.Logger, opts ...RegistrationOption) {
 	reg.mu.RLock()
 	defer reg.mu.RUnlock()
 
+	cfg := &registrationConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	for _, route := range reg.routes {
-		// Use interface method to adapt handler - no type assertions needed!
-		adaptedHandler := route.Handler.Adapt(database, logger)
+		var adaptedHandler http.HandlerFunc
+		if cfg.services != nil {
+			if sa, ok := route.Handler.(interface {
+				AdaptWithServices(*sql.DB, *slog.Logger, any) http.HandlerFunc
+			}); ok {
+				adaptedHandler = sa.AdaptWithServices(database, logger, cfg.services)
+			} else {
+				adaptedHandler = route.Handler.Adapt(database, logger)
+			}
+		} else {
+			adaptedHandler = route.Handler.Adapt(database, logger)
+		}
 		registerRoute(r, route.Method, route.Path, adaptedHandler)
 	}
 }
