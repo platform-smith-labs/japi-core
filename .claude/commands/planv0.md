@@ -435,6 +435,16 @@ Or specify different placement: "after phase-X" or "end"
      - Dependencies
    - **IMPORTANT**: Address requirements from ALL documents in the plan
 
+4. **Read Upstream Messages (if epic-linked)**:
+   - Check if manifest has `**Epic**: epic-NNNN`
+   - If yes, check for `docs/work/work-NNNN/upstream/from-*.md` files
+   - Read EACH upstream message for cross-repo constraints and interface contracts
+   - These messages contain requirements from OTHER repos (API contracts, message formats, DB schemas)
+   - **IMPORTANT**: Incorporate upstream constraints into the plan. Add an "## Upstream Dependencies" section to `master.md` if any upstream messages exist, listing:
+     - What other repos expect from this repo
+     - Interface contracts that must be honored
+     - Constraints on implementation approach
+
 **If `--work` is NOT provided (Standalone Mode)**:
 
 1. **Gather Context from User**:

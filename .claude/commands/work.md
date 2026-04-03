@@ -6,6 +6,9 @@
 
 ```bash
 /work "Natural language prompt"       # Auto-create work + research + requirements
+/work work-NNNN                       # Resume existing work item from current status
+/work --epic work-NNNN               # Promote existing work item to cross-repo epic
+/work --sync epic-NNNN               # Sync cross-repo state for an epic
 /work show work-NNNN                  # Show work item details
 /work list                            # List all work items
 /work update work-NNNN --status X     # Update work status
@@ -137,6 +140,129 @@ After both research and requirements are complete:
    - Update documents based on feedback
    - Only proceed to planning when user explicitly runs `/planv0 --work work-NNNN`
 
+### When user runs: `/work work-NNNN` (existing work item ID)
+
+**Resume an existing work item from its current status.** This makes `/work` idempotent — it picks up where the last session left off.
+
+1. Read `docs/work/work-NNNN/manifest.md`
+2. If `epic/` folder exists, read `epic/context.md` for cross-repo context
+3. If `upstream/` folder has `from-*` files, note them as additional research context
+4. Check status and continue from there:
+   - **🎯 Proposed** → Start Phase 2 (Research). Use `epic/` and `upstream/` context if present.
+   - **📚 Researching** → Check what research exists in `research/`. If incomplete, continue. If complete, move to Phase 3 (Requirements).
+   - **📝 Requirements** → Check what requirements exist. If complete, prompt: "Requirements ready. Run `/planv0 --work work-NNNN` to create implementation plan."
+   - **🎨 Planning** → "Planning phase. Run `/planv0 --work work-NNNN` to create or review the plan."
+   - **🔄 In Implementation** → "Implementation in progress. Run `/implement_plan docs/work/work-NNNN/plans/master.md` to continue."
+   - **✅ Completed** → "This work item is already completed."
+   - **🔴 Blocked** → Display blockers from manifest, suggest resolution.
+
+**Epic-aware research**: When the work item has `**Epic**: epic-NNNN` in its manifest, the research phase MUST:
+- Read all files in `epic/` folder for cross-repo context
+- Read all `upstream/from-*` files for incoming messages from other repos
+- Incorporate this context into research alongside the Original Request
+- When cross-repo changes are needed in other repos during research:
+  1. Create `upstream/to-{target-repo}--{descriptive-slug}.md` with:
+     - What the target repo needs to do or know
+     - Interface contracts (API endpoints, message formats, DB schemas) if applicable
+     - Why this is needed
+  2. Note in the research document: "Cross-repo needs identified for: {list of repos}"
+  3. Remind user: "Run `/work --sync epic-NNNN` in {target-repo}/ to deliver these findings."
+
+**If no epic context exists**, the research phase proceeds normally (backward compatible).
+
+---
+
+### When user runs: `/work --epic work-NNNN`
+
+**Promote an existing work item to a cross-repo epic.** Use this when you started with a normal `/work "prompt"` and later discover the feature needs changes in other repos.
+
+1. Read `docs/work/work-NNNN/manifest.md` → extract Original Request and current status
+2. If manifest already has `**Epic**: epic-NNNN` → "This work item is already linked to epic-NNNN."
+3. Generate title from the Original Request (3-8 words)
+4. Determine next epic ID: scan `../docs/epics/epic-*/manifest.md`. If no epics dir exists, start with `epic-0001`.
+5. Determine this repo's name from the current directory (basename of pwd)
+6. Create `../docs/epics/epic-NNNN/manifest.md`:
+   - Status: Active
+   - Primary Repo: {this-repo}
+   - Tracked Repos: {this-repo} | work-NNNN | {current phase/status}
+   - Original Request: copied from work item's manifest
+7. Create or update `../docs/epics/index.md`
+8. Add `**Epic**: epic-NNNN` to `docs/work/work-NNNN/manifest.md` (insert after the Owner line)
+9. Create `docs/work/work-NNNN/epic/context.md` with:
+   - Epic ID and title
+   - Cross-repo guidance (same as in `/epic` command's context template)
+10. Output:
+    ```
+    Created epic-NNNN: {Title}
+    Linked to work-NNNN in {this-repo}
+
+    To relay findings to other repos, write upstream/to-{repo}--{slug}.md files,
+    then run /work --sync epic-NNNN in the target repo.
+    ```
+
+---
+
+### When user runs: `/work --sync epic-NNNN`
+
+**Sync cross-repo state from inside a child repo.** This is the primary way to pull context from other repos and push status updates without switching to the parent directory.
+
+#### Step 1: Read Epic
+
+1. Read `../docs/epics/epic-NNNN/manifest.md`
+   - If not found: "Epic epic-NNNN not found. Check ../docs/epics/ or run /epic list from parent dir."
+2. Extract tracked repos and their work item IDs
+3. Determine this repo's name from the current directory
+
+#### Step 2: Determine Local Work Item
+
+- If this repo is already in the epic's Tracked Repos → use the linked work item ID
+- If this repo is NOT tracked:
+  1. Scan other tracked repos for `../{other-repo}/docs/work/work-MMMM/upstream/to-{this-repo}--*.md`
+  2. If found (or if the user explicitly synced to this repo), create a new work item:
+     - Determine next work ID from `docs/work/work-*/manifest.md`
+     - Create `docs/work/work-PPPP/manifest.md` (Proposed, Epic: epic-NNNN)
+     - Create subdirectories: `research/`, `requirements/`, `plans/`, `epic/`, `upstream/`
+     - Create `docs/work/work-PPPP/epic/context.md` with:
+       - Epic context (title, original request from epic manifest)
+       - Summary of what other tracked repos are doing (from epic manifest's Tracked Repos table)
+     - Update `docs/work/index.md`
+     - Update `../docs/epics/epic-NNNN/manifest.md` → add this repo to Tracked Repos
+  3. If no relay files found for this repo: "No pending work for {this-repo} in epic-NNNN. This repo may not be needed yet."
+
+#### Step 3: Pull Incoming Relay Files
+
+For each OTHER tracked repo in the epic:
+1. Scan `../{other-repo}/docs/work/work-MMMM/upstream/to-{this-repo}--*.md`
+2. For each file found:
+   - Copy to `docs/work/work-PPPP/upstream/from-{source-repo}--{slug}.md`
+   - Delete the `to-` file from the source repo (delivered)
+   - Append to local manifest under `## Upstream Messages`:
+     ```
+     - [{YYYY-MM-DD}] from {source-repo}: [{slug}](./upstream/from-{source-repo}--{slug}.md)
+     ```
+
+#### Step 4: Push Status to Epic
+
+1. Read this repo's work item status from manifest
+2. Update `../docs/epics/epic-NNNN/manifest.md`:
+   - Update this repo's row in Tracked Repos table (Phase, Status)
+   - Append to Relay Log if messages were delivered
+   - Update Last Synced timestamp
+   - Add change log entry
+
+#### Step 5: Output
+
+```
+Synced epic-NNNN for {this-repo}:
+  Work item: work-PPPP
+  Pulled: {N} messages ({list of from-* files})
+  Status pushed: {current status}
+
+Run /work work-PPPP to continue.
+```
+
+---
+
 ### When user runs: `/work show work-NNNN`
 
 You MUST:
@@ -169,6 +295,7 @@ You MUST:
 **Created**: {YYYY-MM-DD}
 **Last Updated**: {YYYY-MM-DD}
 **Owner**: {User/Team}
+**Epic**: {epic-NNNN if linked, otherwise omit this line}
 **Priority**: {TBD - to be determined during research}
 **Estimated Effort**: {TBD - to be determined during planning}
 
@@ -220,6 +347,10 @@ You MUST:
 ## Dependencies
 
 {Add as discovered}
+
+## Upstream Messages
+
+{Cross-repo messages delivered via /work --sync — read during research and planning}
 
 ## Change Log
 

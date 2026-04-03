@@ -593,11 +593,11 @@ Given the constraints, I'll present the complete document here for the user to s
 
 ---
 
-Here are my complete findings. I was unable to write the file directly as no file-write tool is available in this session. Below is the complete content ready to be saved to `/Users/syamkrishnan/workspace/personal/ps/japi-core/docs/work/work-0002/research/0001-dependency-upgrade-research.md`.
+Here are my complete findings. I was unable to write the file directly as no file-write tool is available in this session. Below is the complete content ready to be saved to `../../../../../japi-core/docs/work/work-0002/research/0001-dependency-upgrade-research.md`.
 
 First, create the directory:
 ```bash
-mkdir -p /Users/syamkrishnan/workspace/personal/ps/japi-core/docs/work/work-0002/research
+mkdir -p ../../../../../japi-core/docs/work/work-0002/research
 ```
 
 Then save the following content to that file:
