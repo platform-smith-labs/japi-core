@@ -2,6 +2,16 @@
 
 Conduct thorough research and create research documents for analysis, investigation, and understanding within a work item context.
 
+## Resolving `--work` IDs
+
+When the user passes `--work work-NNNN` (e.g., `--work work-0027`), the value is a **short ID**. The actual directory name may be either the short legacy form (`work-NNNN`) or the new conflict-resistant form (`work-NNNN-MMDDHHMM-slug`). Before any file read/write, **resolve the short ID to the real directory**:
+
+1. **Try exact match** — Glob `docs/work/{arg}/manifest.md`. If found, use `docs/work/{arg}/` as the work item directory.
+2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/manifest.md`. This matches the new format whose directory is `{arg}-MMDDHHMM-slug`.
+3. **If exactly one match**, use that directory throughout the command. If zero, error: "Work item {arg} not found in docs/work/." If multiple, error and list the matches.
+
+Throughout the rest of this document, `work-NNNN` is shorthand for **the resolved work item directory name** — substitute the actual resolved value when constructing paths.
+
 ## PART I - CONTEXT GATHERING
 
 ### Work Item Context (Optional)
@@ -9,11 +19,12 @@ Conduct thorough research and create research documents for analysis, investigat
 The `--work work-NNNN` parameter is **OPTIONAL** but recommended for organized knowledge tracking.
 
 **When `--work work-NNNN` is provided**:
-1. Read work manifest: `docs/work/work-NNNN/manifest.md`
-2. Read existing research documents in `docs/work/work-NNNN/research/` for context
-3. Determine research focus based on work item and user's research topic
-4. Plan to create research in `docs/work/work-NNNN/research/NNNN-*.md`
-5. Plan to update work manifest when complete
+1. Resolve the short ID to the actual directory (see "Resolving `--work` IDs" above).
+2. Read work manifest: `docs/work/work-NNNN/manifest.md`
+3. Read existing research documents in `docs/work/work-NNNN/research/` for context
+4. Determine research focus based on work item and user's research topic
+5. Plan to create research in `docs/work/work-NNNN/research/NNNN-*.md`
+6. Plan to update work manifest when complete
 
 **When `--work` is NOT provided** (Standalone Mode):
 1. Create research in `docs/research/NNNN-*.md`

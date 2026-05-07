@@ -274,11 +274,14 @@ The `planv0` command validates and ensures NO placeholders remain.
 ## File Numbering Conventions
 
 All documents use sequential numbering within their scope:
-- **Work items**: `work-0001`, `work-0002` (global across all work)
+- **Work items**: `work-NNNN-MMDDHHMM-slug` for new items (e.g. `work-0027-05071523-runtime-sessions-count`); legacy `work-NNNN` form is preserved without migration. See `/work` command's "ID Format" for the full spec.
+- **Epics**: `epic-NNNN-MMDDHHMM-slug` for new items (e.g. `epic-0050-05071523-runtime-sessions-count`); legacy `epic-NNNN` form preserved. See `/epic` command's "ID Format".
 - **Research**: `0001-topic-research.md`, `0002-topic-research.md` (per work item or global)
 - **Requirements**: `0001-feature-req.md`, `0002-feature-req.md` (per work item or global)
 - **Issues**: `0001-bug-issue.md`, `0002-task-issue.md` (per work item or global)
 - **Plans**: `phase-1.md`, `phase-2.md`, `phase-2.1.md` (per work item)
+
+When invoking commands like `/research --work work-NNNN`, you may pass the short ID (`work-0027`); commands resolve it to the actual directory.
 
 ## Status Values for Work Items
 

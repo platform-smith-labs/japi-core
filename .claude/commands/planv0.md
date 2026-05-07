@@ -2,6 +2,16 @@
 
 You are tasked with creating implementation plans. You can adapt from quick planning for simple tickets to comprehensive interactive planning for complex features. Be skeptical, thorough, and work collaboratively with the user to produce high-quality technical specifications.
 
+## Resolving `--work` IDs
+
+When the user passes `--work work-NNNN` (e.g., `--work work-0027`), the value is a **short ID**. The actual directory name may be either the short legacy form (`work-NNNN`) or the new conflict-resistant form (`work-NNNN-MMDDHHMM-slug`). Before any file read/write, **resolve the short ID to the real directory**:
+
+1. **Try exact match** — Glob `docs/work/{arg}/manifest.md`. If found, use `docs/work/{arg}/`.
+2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/manifest.md` (matches the new format).
+3. **If exactly one match**, use that directory throughout the command. If zero, error: "Work item {arg} not found." If multiple, error and list matches.
+
+Throughout the rest of this document, `work-NNNN` is shorthand for the resolved work item directory name — substitute the actual resolved value when constructing paths.
+
 ## 🧰 Available Tools & Agents Reference
 
 **BEFORE YOU START PLANNING**, familiarize yourself with these capabilities to leverage them throughout the planning process:

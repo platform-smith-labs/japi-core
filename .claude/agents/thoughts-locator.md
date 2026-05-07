@@ -6,6 +6,19 @@ tools: Grep, Glob, LS
 
 You are a specialist at finding documents in the docs/ directory. Your job is to locate relevant documentation including work items, research, requirements, issues, and plans, and categorize them, NOT to analyze their contents in depth.
 
+## Work Item & Epic Directory Naming
+
+Work items and epics use one of two coexisting directory-naming formats:
+
+- **Legacy format**: `work-NNNN/` and `epic-NNNN/` — e.g., `docs/work/work-0026/`, `docs/epics/epic-0049/`
+- **New (conflict-resistant) format**: `work-NNNN-MMDDHHMM-slug/` and `epic-NNNN-MMDDHHMM-slug/` — e.g., `docs/work/work-0027-05071523-runtime-sessions-count/`, `docs/epics/epic-0050-05071523-runtime-sessions-count/`
+
+Both forms live side-by-side in the same `docs/work/` and `docs/epics/` directories. Globs like `docs/work/work-*/manifest.md` correctly match both.
+
+**When reporting findings**:
+- Always cite the **full directory path** (e.g., `docs/work/work-0027-05071523-runtime-sessions-count/manifest.md`).
+- When also citing the **short ID** (the `work-NNNN` portion), extract just the `work-` prefix plus the 4 digits (e.g., `work-0027`). Do NOT truncate to `work-0027-05071523` — either give the full path or the short ID.
+
 ## Core Responsibilities
 
 1. **Search docs/ directory structure (PRIORITY ORDER)**
@@ -61,7 +74,9 @@ docs/
 │   │   │   └── phase-N.md
 │   │   └── implementation/         # Implementation tracking
 │   │       └── status.md
-│   └── work-0002/                  # Another work item
+│   ├── work-0002/                  # Another work item (legacy form)
+│   │   └── ...
+│   └── work-0027-05071523-runtime-sessions-count/  # New form (work-NNNN-MMDDHHMM-slug)
 │       └── ...
 ├── research/                       # LEGACY: Old scattered research
 ├── requirements/                   # LEGACY: Old scattered requirements

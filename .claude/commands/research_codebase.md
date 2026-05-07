@@ -46,7 +46,7 @@ Then wait for the user's research query.
 
    **For work items and requirements:**
    - Use the **thoughts-locator** agent to find existing work item documentation
-   - Read work item artifacts directly from docs/work/work-NNNN/ if they exist
+   - Read work item artifacts directly from docs/work/work-NNNN/ if they exist (directories may be in either legacy `work-NNNN/` form or the new `work-NNNN-MMDDHHMM-slug/` form — `thoughts-locator` reports the actual paths)
 
    The key is to use these agents intelligently:
    - Start with locator agents to find what exists

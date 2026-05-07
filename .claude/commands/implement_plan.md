@@ -9,8 +9,12 @@ You are tasked with implementing an approved technical plan. These plans contain
 ```
 
 **Examples**:
-- `/implement_plan docs/work/work-0001/plans/master.md`
-- `/implement_plan docs/work/work-0002/plans/phase-1.md`
+- `/implement_plan docs/work/work-0001/plans/master.md` (legacy form)
+- `/implement_plan docs/work/work-0027-05071523-runtime-sessions-count/plans/phase-1.md` (new form)
+
+The plan path may reference a work item in either the legacy form (`docs/work/work-NNNN/`) or the new conflict-resistant form (`docs/work/work-NNNN-MMDDHHMM-slug/`). The path is used as-is — no ID resolution is needed since the user provides the full directory path.
+
+In the prose below, `work-NNNN` is shorthand for the work item directory name extracted from the plan path (use it verbatim when constructing other paths under that directory).
 
 ## Getting Started
 
@@ -18,14 +22,14 @@ When given a plan path:
 
 1. **Read the plan file** completely
    - Check for any existing checkmarks (- [x])
-   - **Extract work item reference** if present (look for `Work Item: work-NNNN`)
+   - **Extract work item reference** if present (look for `Work Item: work-NNNN` — note that the value may be the short ID, the full new-format ID, or absent)
 
-2. **If work item detected** (e.g., `Work Item: work-0001`):
-   - Read work manifest: `docs/work/work-0001/manifest.md`
-   - Read ALL research documents: `docs/work/work-0001/research/*.md` (for context)
-   - Read ALL requirements documents: `docs/work/work-0001/requirements/*.md` (for acceptance criteria)
-   - Read ALL issues: `docs/work/work-0001/issues/*.md` (if any)
-   - Read all plan files: `docs/work/work-0001/plans/*.md`
+2. **If work item detected** (use the directory name extracted from the plan path):
+   - Read work manifest: `docs/work/work-NNNN/manifest.md`
+   - Read ALL research documents: `docs/work/work-NNNN/research/*.md` (for context)
+   - Read ALL requirements documents: `docs/work/work-NNNN/requirements/*.md` (for acceptance criteria)
+   - Read ALL issues: `docs/work/work-NNNN/issues/*.md` (if any)
+   - Read all plan files: `docs/work/work-NNNN/plans/*.md`
    - Prepare to update manifest with progress
 
 3. **Read all files mentioned** in the plan

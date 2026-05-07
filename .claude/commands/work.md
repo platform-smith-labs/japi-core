@@ -14,6 +14,47 @@
 /work update work-NNNN --status X     # Update work status
 ```
 
+## ID Format
+
+Work IDs follow the format: **`work-{NNNN}-{MMDDHHMM}-{short-title}`**
+
+- **`NNNN`** — 4-digit zero-padded sequence number (e.g. `0003`).
+- **`MMDDHHMM`** — current local time: 2-digit month, day, hour (24h), minute, no separators (e.g. `04251432` for April 25, 14:32).
+- **`short-title`** — kebab-case slug derived from the prompt: lowercase, hyphen-separated, 2–5 words, ≤30 chars (e.g. `oauth-social-login`).
+
+**Full example**: `work-0003-04251432-oauth-social-login`
+
+> ### ⚠️ MANDATORY — Read before generating any ID
+>
+> **Use this format for ALL new work IDs (and any epic IDs created by `/work --epic`), unconditionally.** Do not use any other format.
+>
+> You may observe that existing items in `docs/work/` use a shorter legacy format (`work-NNNN`). **This is expected. Legacy items are not migrated.** New items still use the new format.
+>
+> **Do NOT reason as follows** (this is the documented failure mode this rule guards against):
+> - ❌ "All existing work items use `work-NNNN`, so I'll match for consistency."
+> - ❌ "The legacy format is simpler, I'll use it."
+> - ❌ "Only one example uses the new format, the rest are legacy — I'll match the majority."
+>
+> The new format is **required** to prevent directory-path conflicts when multiple developers create work items on parallel branches. Consistency with legacy items is **not** a valid reason to skip it.
+>
+> **Both formats coexist**: `docs/work/work-0026/` (legacy) and `docs/work/work-0027-05071523-runtime-sessions-count/` (new) live side by side. Never rename or migrate legacy items unless explicitly asked.
+
+**Why this format**: Multiple developers can create work items on independent branches without directory-path conflicts. Even if `NNNN` collides between branches, the timestamp + slug components keep the full IDs (and directory paths) unique on merge. Throughout this document, `work-NNNN` is used as shorthand for the full generated ID.
+
+When this command promotes a work item to a cross-repo epic (`/work --epic`), the new epic ID uses the matching format: **`epic-{NNNN}-{MMDDHHMM}-{short-title}`**.
+
+## Resolving Existing IDs
+
+When a subcommand takes a `work-NNNN` argument (`/work work-NNNN` resume, `/work show`, `/work update`, `/work --epic work-NNNN`), the user typically passes the **short ID** (e.g., `work-0027`). The actual directory may be either legacy `work-NNNN/` or new-format `work-NNNN-MMDDHHMM-slug/`. Resolve before reading/writing:
+
+1. **Try exact match** — `docs/work/{arg}/manifest.md`. If found, use `docs/work/{arg}/`.
+2. **Else glob with dash suffix** — `docs/work/{arg}-*/manifest.md` (matches new format).
+3. **If exactly one match**, use that directory. If zero, error: "Work item {arg} not found." If multiple, error and list matches.
+
+The same rule applies to **epic IDs** in `/work --sync epic-NNNN` (resolve against `../docs/epics/`).
+
+Throughout this document, `work-NNNN` and `epic-NNNN` are shorthand for the resolved directory names.
+
 ## Behavior
 
 ### When user runs: `/work "Natural language prompt or problem description"`
@@ -29,10 +70,11 @@ You MUST execute this **3-phase automatic workflow**:
 
 #### Phase 1: Create Work Item
 
-1. **Determine Next Work ID**
-   - Use Glob to find existing work manifests: `docs/work/work-*-manifest.md`
-   - Extract highest NNNN and increment by 1
-   - Format as `work-NNNN` (zero-padded to 4 digits)
+1. **Determine Next Work ID** — format: `work-{NNNN}-{MMDDHHMM}-{short-title}` (see **ID Format** above)
+   - **NNNN (sequence)**: Use Glob to find existing work manifests: `docs/work/work-*/manifest.md`. From each match, parse the 4 digits immediately after `work-`. Take the highest, increment by 1, zero-pad to 4 digits. If no work items exist, start with `0001`.
+   - **MMDDHHMM (timestamp)**: Use Bash to run `date +%m%d%H%M` and capture the value (reuse it for any related artifacts created in this same invocation).
+   - **short-title (slug)**: Generate a kebab-case slug from the user's prompt — lowercase, hyphen-separated, 2–5 distinctive words, ≤30 chars. Strip stopwords; keep nouns/verbs. Example: `"I want to add OAuth social login to the app"` → `oauth-social-login`.
+   - **Combine** as `work-{NNNN}-{MMDDHHMM}-{short-title}` (e.g. `work-0003-04251432-oauth-social-login`).
 
 2. **Extract Title from Prompt**
    - Analyze the user's prompt
@@ -179,7 +221,11 @@ After both research and requirements are complete:
 1. Read `docs/work/work-NNNN/manifest.md` → extract Original Request and current status
 2. If manifest already has `**Epic**: epic-NNNN` → "This work item is already linked to epic-NNNN."
 3. Generate title from the Original Request (3-8 words)
-4. Determine next epic ID: scan `../docs/epics/epic-*/manifest.md`. If no epics dir exists, start with `epic-0001`.
+4. Determine next epic ID using the format `epic-{NNNN}-{MMDDHHMM}-{short-title}` (see **ID Format** at top):
+   - **NNNN**: Scan `../docs/epics/epic-*/manifest.md`, parse the 4 digits after `epic-`, take highest, increment, zero-pad. If no epics dir exists, start with `0001`.
+   - **MMDDHHMM**: Run `date +%m%d%H%M`.
+   - **short-title**: Reuse the existing work item's slug (extracted from its directory name) so the epic and its primary work item share a slug for traceability.
+   - **Combine** as `epic-{NNNN}-{MMDDHHMM}-{short-title}` (e.g. `epic-0007-04251432-oauth-social-login`).
 5. Determine this repo's name from the current directory (basename of pwd)
 6. Create `../docs/epics/epic-NNNN/manifest.md`:
    - Status: Active
@@ -382,7 +428,7 @@ Last Updated: {Auto-update on each change}
 
 | ID | Title | Status | Created | Artifacts |
 |----|-------|--------|---------|-----------|
-| work-0001 | Example Feature | 🔄 In Implementation | 2026-01-02 | R, Req, P |
+| work-0001-04251432-oauth-social-login | Example Feature | 🔄 In Implementation | 2026-01-02 | R, Req, P |
 
 ## Completed Work Items
 

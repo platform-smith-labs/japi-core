@@ -2,15 +2,26 @@
 
 Create tickets for bugs, fixes, and small tasks within a work item context.
 
+## Resolving `--work` IDs
+
+When the user passes `--work work-NNNN` (e.g., `--work work-0027`), the value is a **short ID**. The actual directory name may be either the short legacy form (`work-NNNN`) or the new conflict-resistant form (`work-NNNN-MMDDHHMM-slug`). Before any file read/write, **resolve the short ID to the real directory**:
+
+1. **Try exact match** — Glob `docs/work/{arg}/manifest.md`. If found, use `docs/work/{arg}/`.
+2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/manifest.md` (matches the new format).
+3. **If exactly one match**, use that directory. If zero, error: "Work item {arg} not found." If multiple, error and list matches.
+
+Throughout the rest of this document, `work-NNNN` is shorthand for the resolved work item directory name.
+
 ## Work Item Context (Optional)
 
 The `--work work-NNNN` parameter is **OPTIONAL** but recommended for organized issue tracking.
 
 **When `--work work-NNNN` is provided**:
-1. Read work manifest: `docs/work/work-NNNN/manifest.md`
-2. Read existing issues in `docs/work/work-NNNN/issues/` to avoid duplication
-3. Plan to create issue in `docs/work/work-NNNN/issues/NNNN-*.md`
-4. Plan to update work manifest when complete
+1. Resolve the short ID to the actual directory (see above).
+2. Read work manifest: `docs/work/work-NNNN/manifest.md`
+3. Read existing issues in `docs/work/work-NNNN/issues/` to avoid duplication
+4. Plan to create issue in `docs/work/work-NNNN/issues/NNNN-*.md`
+5. Plan to update work manifest when complete
 
 **When `--work` is NOT provided (Standalone Mode)**:
 1. Create issue in `docs/issues/NNNN-*.md`

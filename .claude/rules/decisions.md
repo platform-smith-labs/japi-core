@@ -61,7 +61,7 @@ Every decision document MUST follow this format:
 ## See Also
 
 - [Related Decision](./related-decision.md)
-- [Related Work Item](../../work/work-NNNN/...)
+- [Related Work Item](../../work/work-NNNN/...) (use the actual directory name, e.g. `work-0027` for legacy or `work-0027-05071523-runtime-sessions-count` for new format)
 ```
 
 ## Rules for writing decisions
