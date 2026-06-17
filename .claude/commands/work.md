@@ -55,6 +55,30 @@ The same rule applies to **epic IDs** in `/work --sync epic-NNNN` (resolve again
 
 Throughout this document, `work-NNNN` and `epic-NNNN` are shorthand for the resolved directory names.
 
+## Hierarchy & optional parents
+
+The workflow has three nesting tiers, **each parent optional**:
+
+```
+wishlist item   (a deferred idea; may spawn 0..N epics, one per milestone)   ← docs/wishlist/ (monorepo root)
+   └─ epic       (cross-repo coordination; may own 1..N work items)            ← docs/epics/ (monorepo root)
+        └─ work  (single-repo execution)                                       ← {repo}/docs/work/
+```
+
+- A **work item** may be **standalone** (`/work "prompt"` — no epic), **epic-owned** (created by
+  `/epic` or `/work --sync`), or wishlist-derived (via its epic). Parent epic is **optional**.
+- An **epic** may be **standalone** (no wishlist) or **wishlist-derived**. Parent wishlist is **optional**.
+- A **wishlist item** may map to **0..N epics** over time (incremental, one per milestone).
+
+**Linkage fields** (each present only when that parent exists):
+- work manifest: `**Epic**: epic-NNNN` and/or `**Wishlist**: NNNN — milestone Mx`
+- epic manifest: `**Wishlist**: NNNN — milestone Mx`
+
+**Upward status sync follows the chain, each hop only if the parent exists:**
+`/work --sync epic-NNNN` pushes work → epic, and (if the epic is wishlist-linked) onward epic →
+wishlist in the same pass. `/epic sync` (from the monorepo root) does the same epic → wishlist
+reflection. See each command's sync step.
+
 ## Behavior
 
 ### When user runs: `/work "Natural language prompt or problem description"`
@@ -287,7 +311,7 @@ For each OTHER tracked repo in the epic:
      - [{YYYY-MM-DD}] from {source-repo}: [{slug}](./upstream/from-{source-repo}--{slug}.md)
      ```
 
-#### Step 4: Push Status to Epic
+#### Step 4: Push Status to Epic (and onward to the wishlist)
 
 1. Read this repo's work item status from manifest
 2. Update `../docs/epics/epic-NNNN/manifest.md`:
@@ -295,6 +319,12 @@ For each OTHER tracked repo in the epic:
    - Append to Relay Log if messages were delivered
    - Update Last Synced timestamp
    - Add change log entry
+3. **Propagate one level further up the hierarchy if the epic is wishlist-linked.** If the
+   epic manifest has a `**Wishlist**: NNNN — milestone Mx` field, also reflect this work item's
+   status into the wishlist item's `## Tracking (epics / work items)` row in
+   `../docs/wishlist/NNNN_slug/README.md` (find the row for this epic/milestone; update its
+   Status). This makes a single `/work --sync` propagate **work → epic → wishlist** in one pass.
+   If the epic has no `**Wishlist**:` field, stop at the epic (nothing to propagate).
 
 #### Step 5: Output
 
@@ -303,6 +333,7 @@ Synced epic-NNNN for {this-repo}:
   Work item: work-PPPP
   Pulled: {N} messages ({list of from-* files})
   Status pushed: {current status}
+  Wishlist: {reflected to wishlist NNNN milestone Mx | not wishlist-linked}
 
 Run /work work-PPPP to continue.
 ```
@@ -342,6 +373,7 @@ You MUST:
 **Last Updated**: {YYYY-MM-DD}
 **Owner**: {User/Team}
 **Epic**: {epic-NNNN if linked, otherwise omit this line}
+**Wishlist**: {NNNN — milestone Mx if this work item (via its epic) implements a docs/wishlist/ item; omit this line otherwise. Inherited from the epic; keep in sync with the wishlist item's Tracking table.}
 **Priority**: {TBD - to be determined during research}
 **Estimated Effort**: {TBD - to be determined during planning}
 
