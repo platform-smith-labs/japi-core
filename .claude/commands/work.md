@@ -55,6 +55,30 @@ The same rule applies to **epic IDs** in `/work --sync epic-NNNN` (resolve again
 
 Throughout this document, `work-NNNN` and `epic-NNNN` are shorthand for the resolved directory names.
 
+## Hierarchy & optional parents
+
+The workflow has three nesting tiers, **each parent optional**:
+
+```
+wishlist item   (a deferred idea; may spawn 0..N epics, one per milestone)   ← docs/wishlist/ (monorepo root)
+   └─ epic       (cross-repo coordination; may own 1..N work items)            ← docs/epics/ (monorepo root)
+        └─ work  (single-repo execution)                                       ← {repo}/docs/work/
+```
+
+- A **work item** may be **standalone** (`/work "prompt"` — no epic), **epic-owned** (created by
+  `/epic` or `/work --sync`), or wishlist-derived (via its epic). Parent epic is **optional**.
+- An **epic** may be **standalone** (no wishlist) or **wishlist-derived**. Parent wishlist is **optional**.
+- A **wishlist item** may map to **0..N epics** over time (incremental, one per milestone).
+
+**Linkage fields** (each present only when that parent exists):
+- work manifest: `**Epic**: epic-NNNN` and/or `**Wishlist**: NNNN — milestone Mx`
+- epic manifest: `**Wishlist**: NNNN — milestone Mx`
+
+**Upward status sync follows the chain, each hop only if the parent exists:**
+`/work --sync epic-NNNN` pushes work → epic, and (if the epic is wishlist-linked) onward epic →
+wishlist in the same pass. `/epic sync` (from the monorepo root) does the same epic → wishlist
+reflection. See each command's sync step.
+
 ## Behavior
 
 ### When user runs: `/work "Natural language prompt or problem description"`
@@ -188,7 +212,13 @@ After both research and requirements are complete:
 
 1. Read `docs/work/work-NNNN/manifest.md`
 2. If `epic/` folder exists, read `epic/context.md` for cross-repo context
-3. If `upstream/` folder has `from-*` files, note them as additional research context
+3. **Open inbound relays take precedence (epic-bound only).** If the manifest has `**Epic**:
+   epic-NNNN` AND there are **open** `upstream/from-*` relays (files directly under `upstream/`,
+   NOT `upstream/archive/`), do **NOT** jump to the phase-status prompt in step 4. **Process them
+   first** per **Epic-aware work** below — an open inbound ask is actionable work in THIS repo
+   regardless of phase (this is how a *late-surfacing* dependency re-engages a repo that had already
+   settled). Only after every open inbound relay is validated → acted-on → answered (reply relay if
+   needed) → archived, re-evaluate `**Epic Phase Done**` and proceed to step 4.
 4. Check status and continue from there:
    - **🎯 Proposed** → Start Phase 2 (Research). Use `epic/` and `upstream/` context if present.
    - **📚 Researching** → Check what research exists in `research/`. If incomplete, continue. If complete, move to Phase 3 (Requirements).
@@ -198,19 +228,39 @@ After both research and requirements are complete:
    - **✅ Completed** → "This work item is already completed."
    - **🔴 Blocked** → Display blockers from manifest, suggest resolution.
 
-**Epic-aware research**: When the work item has `**Epic**: epic-NNNN` in its manifest, the research phase MUST:
-- Read all files in `epic/` folder for cross-repo context
-- Read all `upstream/from-*` files for incoming messages from other repos
-- Incorporate this context into research alongside the Original Request
-- When cross-repo changes are needed in other repos during research:
-  1. Create `upstream/to-{target-repo}--{descriptive-slug}.md` with:
-     - What the target repo needs to do or know
-     - Interface contracts (API endpoints, message formats, DB schemas) if applicable
-     - Why this is needed
-  2. Note in the research document: "Cross-repo needs identified for: {list of repos}"
-  3. Remind user: "Run `/work --sync epic-NNNN` in {target-repo}/ to deliver these findings."
+**Epic-aware work (barrier-synchronized conductor model)**:
+When the work item has `**Epic**: epic-NNNN`, this repo is one strand of a **barrier-synchronized**
+epic. Honor these rules in EVERY phase (requirements, planning, implementation), not just research:
 
-**If no epic context exists**, the research phase proceeds normally (backward compatible).
+1. **Read inbound first.** Read all `epic/` files + all **open** `upstream/from-*` relays (files
+   directly under `upstream/`, NOT `upstream/archive/`).
+2. **Mini-validate every open inbound relay** (diff-gate): check the ask against THIS repo's reality.
+   - If it forces a change → do the needful for the current phase, then **archive** the relay
+     (move it to `upstream/archive/`). If your response requires the sender to change something,
+     write a reply relay (next rule).
+   - If it's a pure `confirms`/`fyi` (no action needed) → just archive it.
+3. **Write outbound relays with frontmatter** when you need another repo to do/know something:
+   create `upstream/to-{target-repo}--{slug}.md` starting with:
+   ```yaml
+   ---
+   from: {this-repo}/{this-work-id}
+   to: {target-repo}
+   kind: blocks        # blocks (holds the barrier) | confirms | fyi
+   phase: {current epic phase}
+   status: open
+   round: 1
+   ask: "<one-line ask>"
+   ---
+   ```
+   followed by the human-readable detail (contracts, schemas, why).
+4. **Do NOT run `/work --sync`** (removed for epic-bound work) and **do NOT advance to the next
+   phase yourself.** When you finish the current phase, set `**Epic Phase Done**: <phase>` in your
+   manifest and **STOP**. Tell the user: *"{this-repo} has settled {phase}. Run `/epic sync` (then
+   `/epic board`) at the solution root — the conductor advances the epic when all repos settle."*
+   The global barrier means no repo proceeds to the next phase until every repo settles this one.
+
+**If no epic context exists** (standalone work item), proceed normally and `/work --sync` is N/A —
+the barrier + conductor apply only to epic-bound work. (Backward compatible.)
 
 ---
 
@@ -250,7 +300,20 @@ After both research and requirements are complete:
 
 ### When user runs: `/work --sync epic-NNNN`
 
-**Sync cross-repo state from inside a child repo.** This is the primary way to pull context from other repos and push status updates without switching to the parent directory.
+> ## ⛔ DEPRECATED — the conductor owns sync
+>
+> Under the **barrier-synchronized conductor model**, child repos do **not**
+> sync. Decentralized `/work --sync` is what caused the cross-repo confusion this model fixes (a
+> lost epic parent, stale "delivered" claims, "who pulls what" ambiguity).
+>
+> **Instead:** do your phase work, write `upstream/to-*` relays, set `**Epic Phase Done**`, and
+> **STOP**. Then run **`/epic sync`** (and **`/epic board`**) from the **solution root** — the
+> conductor delivers relays, recomputes the barrier, and tells you the next action.
+>
+> If the user runs `/work --sync epic-NNNN` for an **epic-bound** work item, do NOT execute the old
+> flow. Respond: *"Sync is now centralized — run `/epic sync` at the solution root. I can summarize
+> this repo's state for the conductor if useful."* The steps below are retained only as historical
+> reference and apply to nothing under the current model.
 
 #### Step 1: Read Epic
 
@@ -287,7 +350,7 @@ For each OTHER tracked repo in the epic:
      - [{YYYY-MM-DD}] from {source-repo}: [{slug}](./upstream/from-{source-repo}--{slug}.md)
      ```
 
-#### Step 4: Push Status to Epic
+#### Step 4: Push Status to Epic (and onward to the wishlist)
 
 1. Read this repo's work item status from manifest
 2. Update `../docs/epics/epic-NNNN/manifest.md`:
@@ -295,6 +358,12 @@ For each OTHER tracked repo in the epic:
    - Append to Relay Log if messages were delivered
    - Update Last Synced timestamp
    - Add change log entry
+3. **Propagate one level further up the hierarchy if the epic is wishlist-linked.** If the
+   epic manifest has a `**Wishlist**: NNNN — milestone Mx` field, also reflect this work item's
+   status into the wishlist item's `## Tracking (epics / work items)` row in
+   `../docs/wishlist/NNNN_slug/README.md` (find the row for this epic/milestone; update its
+   Status). This makes a single `/work --sync` propagate **work → epic → wishlist** in one pass.
+   If the epic has no `**Wishlist**:` field, stop at the epic (nothing to propagate).
 
 #### Step 5: Output
 
@@ -303,6 +372,7 @@ Synced epic-NNNN for {this-repo}:
   Work item: work-PPPP
   Pulled: {N} messages ({list of from-* files})
   Status pushed: {current status}
+  Wishlist: {reflected to wishlist NNNN milestone Mx | not wishlist-linked}
 
 Run /work work-PPPP to continue.
 ```
@@ -342,6 +412,8 @@ You MUST:
 **Last Updated**: {YYYY-MM-DD}
 **Owner**: {User/Team}
 **Epic**: {epic-NNNN if linked, otherwise omit this line}
+**Wishlist**: {NNNN — milestone Mx if this work item (via its epic) implements a docs/wishlist/ item; omit this line otherwise. Inherited from the epic; keep in sync with the wishlist item's Tracking table.}
+**Epic Phase Done**: {requirements|planning|implementation|validation — the highest epic phase this repo has settled; set when you STOP at a phase. Omit for standalone work items. Read by the conductor (scripts/epic-board.sh) to compute the barrier.}
 **Priority**: {TBD - to be determined during research}
 **Estimated Effort**: {TBD - to be determined during planning}
 

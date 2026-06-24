@@ -2,19 +2,49 @@
 
 **Purpose**: Coordinate multi-repo features from the parent directory. Creates "epics" that track work items across child repos, with file-based relay for cross-repo communication.
 
-**This command is designed for the parent directory.** Child repos use `/work --epic` and `/work --sync` instead.
+**This command operates on monorepo-root artifacts** (`docs/epics/`, `docs/wishlist/`). It is
+normally run from the monorepo root, but is repo-context-free — if invoked from a child repo it
+resolves the root via **Monorepo Root Resolution** (below). Child repos can also use `/work --epic`
+(promote) and `/work --sync` (sync up) for the work→epic side.
 
 ## Command Usage
 
 ```bash
 /epic {repo} "prompt"                   # Create new epic with primary repo
-/epic sync [epic-NNNN]                  # Full cross-repo sync for all tracked repos
+/epic board [epic-NNNN]                 # Conductor dashboard: barrier + ready-set + "DO THIS NEXT"
+/epic sync [epic-NNNN]                  # Deliver relays (pull) + recompute barrier + update manifests
 /epic status [epic-NNNN]                # Dashboard of all repos' status
 /epic show [epic-NNNN]                  # Detailed epic manifest view
 /epic list                              # List all epics
 /epic next [epic-NNNN]                  # Surface next sub-epic from Sub-Epic Roadmap
 /epic update-sub [epic-NNNN] {phase} {status}  # Mark sub-epic row status (e.g. V1.1 Completed)
+/epic next-milestone [epic-NNNN | wishlist NNNN]  # After a wishlist-linked epic completes, scaffold the next milestone's epic
 ```
+
+> ## ⚙️ Conductor model (barrier-synchronized) — READ FIRST
+>
+> An epic advances **one phase at a time across ALL its repos**: `requirements → planning →
+> implementation → validation`. **No repo starts phase P+1 until every tracked repo has settled
+> phase P AND all relays for phase P are resolved** (the global barrier; a late-surfacing
+> dependency is caught while everyone is still at the same gate). The **solution root is the sole
+> conductor** — it owns sync and tells the human what to run where. (Full rationale is recorded in
+> the project's decision log under `docs/dev/decisions/` when present; the operative rules are all
+> inline here and below — this command is self-contained.)
+>
+> Key consequences for this command:
+> - **`/work --sync` is REMOVED for epic-bound work.** Child repos only do phase work + write
+>   `upstream/to-*` relays; the conductor (`/epic sync`) delivers them. (`/work --sync` survives
+>   only for standalone, non-epic work items.)
+> - **Relays are append-only.** Resolved relays move to `upstream/archive/`, never deleted.
+> - Each epic-bound work manifest carries `**Epic Phase Done**: <phase>`; the epic manifest carries
+>   `**Epic Phase**: <phase>`. The barrier is computed from these, not from prose.
+> - **`scripts/epic-board.sh`** is the read-only conductor view; `/epic board` runs it + interprets.
+
+> **Two "next" commands, two roadmap sources** — keep them distinct:
+> - `/epic next` reads a **parent epic's** own `## Sub-Epic Roadmap` (epic-of-epics).
+> - `/epic next-milestone` reads a **wishlist item's** milestone roadmap / `## Tracking` table
+>   (wishlist → epic), and scaffolds the next milestone's epic. Use this for items like
+>   wishlist 0003 that are delivered one epic per milestone (M0→Mn).
 
 ## ID Format
 
@@ -100,6 +130,23 @@ Both IDs follow the conflict-resistant format defined in **ID Format** above: `e
 
 3. Create or update `docs/epics/index.md` using the Epic Index Template (see below)
 
+4. **Wishlist linkage (REQUIRED when this epic implements a `docs/wishlist/` item).**
+   This epic originates from a wishlist item when the user names a wishlist number, the prompt
+   references `docs/wishlist/NNNN_*`, or you scaffolded it from one (see **Wishlist Linkage**
+   section below for detection). When it applies, the link MUST be **bidirectional** — the
+   wishlist→epic direction matters as much as epic→wishlist:
+   - **a.** Set the epic manifest's `**Wishlist**: NNNN — milestone Mx` header field (`Mx` only
+     if the wishlist item has a multi-milestone roadmap; otherwise just `NNNN`).
+   - **b.** In `docs/wishlist/NNNN_slug/README.md`, add/append a row to its
+     `## Tracking (epics / work items)` section linking this epic + the primary work item +
+     status. Create that section from the wishlist skill's template if it does not exist yet.
+   - **c.** In `docs/wishlist/README.md`, move the item's row from **Open** to **Picked up**
+     (Epic/Work ID = this epic). For a multi-milestone item, note the milestone and that the
+     others are pending; if the item is already under **Picked up** (an earlier milestone
+     scaffolded a prior epic), append this milestone's epic to its Epic/Work ID cell instead of
+     duplicating the row.
+   If no wishlist item is involved, omit the `**Wishlist**:` field and skip this step.
+
 #### Step 3: Create Work Item in Target Repo
 
 1. Create directory: `{repo}/docs/work/work-MMMM/`
@@ -108,6 +155,8 @@ Both IDs follow the conflict-resistant format defined in **ID Format** above: `e
 3. Create `{repo}/docs/work/work-MMMM/manifest.md`:
    - Use the standard work manifest template from `/work` command
    - Add `**Epic**: epic-NNNN` in the header (after Owner line)
+   - If the epic has a `**Wishlist**:` field, carry the same `**Wishlist**: NNNN — milestone Mx`
+     line into the work manifest header (right after the `**Epic**:` line)
    - Status: 🎯 Proposed
    - Original Request: {user's prompt}
    - Include the `## Upstream Messages` section (empty)
@@ -158,9 +207,33 @@ Next: Open a Claude session in {repo}/ and run:
 
 ---
 
+### When user runs: `/epic board [epic-NNNN]`
+
+The **conductor view — one command that refreshes, then tells you the next action.** Two steps:
+
+1. **Refresh first (sync):** run the full `/epic sync` flow for this epic — deliver any pending
+   `to-*` relays, archive resolved relays, scaffold any newly-targeted repo, recompute each work
+   item's `**Epic Phase Done**` and the epic's `**Epic Phase**`, reflect to the wishlist. This is a
+   near no-op when nothing is pending. (This is why `/epic board` exists as a Claude command and not
+   just the raw script — only Claude can do the nuanced delivery/reconciliation; a shell script
+   cannot. Running the board therefore always shows freshly-synced state, so you never run two
+   commands.)
+2. **Render:** run `scripts/epic-board.sh {epic-NNNN}`, present its output verbatim, and add a
+   one-line interpretation. The script computes, from `**Epic Phase Done**` fields + open relay
+   files: the barrier phase, each repo's state (🟢 ACT / ⏳ BLOCKED / 🔵 WORKING / ✅ at-barrier), and
+   a single **DO THIS NEXT** (the bottleneck repo with inbound asks, or the phase command to run in
+   the lagging repos).
+
+For a **read-only glance or a passive monitor** (no sync, no mutation), run
+`scripts/epic-board.sh [epic] [--watch]` directly — e.g. leave `--watch` open in a tab.
+
+---
+
 ### When user runs: `/epic sync [epic-NNNN]`
 
-Full cross-repo synchronization from the parent directory. If no epic ID is provided, sync the most recently updated active epic.
+Full cross-repo synchronization from the parent directory (**the conductor's only mutating action**).
+The solution root is the sole syncer — child repos never run `/work --sync` under an epic. If no epic
+ID is provided, sync the most recently updated active epic.
 
 #### Step 1: Load Epic
 
@@ -197,14 +270,35 @@ For each repo in the Tracked Repos table:
        ```
 
      **In both cases**:
-     - Delete the `to-` file from source repo (it's been delivered)
+     - **Archive, don't delete**: move the source `to-` file to `{repo}/docs/work/work-MMMM/upstream/archive/`
+       (it's been delivered; the history is needed for round/cycle detection). Never `rm` it.
      - Add entry to epic's Relay Log table
+     - **Round-cap guard**: if this same ordered edge (`{source}→{target}`) has already appeared
+       **3+ times in the current phase** in the Relay Log, do NOT silently re-deliver — flag it:
+       "⚠️ {source} ↔ {target} has exchanged 3 rounds this phase without settling — human decision
+       needed," and list the open asks.
 
-#### Step 3: Update Epic Manifest
+2b. **Resolve answered inbound relays**: for each `from-*` relay a repo has now acted on (its ask is
+    satisfied / replied to), move it to that repo's `upstream/archive/`. Only **open** relays
+    (files directly under `upstream/`, excluding `archive/`) hold the barrier.
 
-- Update each repo's Phase and Status in the Tracked Repos table
+#### Step 3: Update Epic Manifest + recompute the barrier
+
+- Update each repo's Phase and Status in the Tracked Repos table, **and set each work manifest's
+  `**Epic Phase Done**: <phase>`** to the highest epic phase that repo has settled.
+- **Recompute the barrier**: `Epic Phase = min(Epic Phase Done across repos) + 1`. Set the epic
+  manifest's `**Epic Phase**:` field. The barrier is **open** (advance the phase) only when every
+  repo's `Epic Phase Done` ≥ the prior phase **AND** there are zero open relays anywhere.
+- Run `scripts/epic-board.sh {epic-NNNN}` and include its output in the summary so the human sees
+  the recomputed "DO THIS NEXT."
 - Update Last Synced timestamp
 - Add change log entries for all actions taken
+- **Reflect status to the wishlist (if the epic has a `**Wishlist**:` field).** Update the
+  corresponding row in `docs/wishlist/NNNN_slug/README.md`'s `## Tracking (epics / work items)`
+  section to the epic's current status (e.g. ✅ done/GO, 🔄 in progress, 🔴 blocked). When the
+  epic reaches a terminal state, ensure the item's registry row in `docs/wishlist/README.md` is
+  under **Picked up** with this epic recorded. Keep the wishlist back-link current — it is the
+  single place a future session looks to see which milestones of a wishlist item are done.
 
 #### Step 4: Present Summary
 
@@ -380,6 +474,76 @@ Run /epic next epic-NNNN to see what's up next.
 
 ---
 
+### When user runs: `/epic next-milestone [epic-NNNN | wishlist NNNN]`
+
+**Scaffold the next milestone's epic for a wishlist item, after the current milestone's epic
+completes.** This is the wishlist→epic "kick off the next one" command. It is how a
+multi-milestone wishlist item (e.g. wishlist 0003: M0→M4) advances one epic at a time, keeping
+the back-link current at every step.
+
+#### Step 1: Resolve the wishlist item + current milestone
+
+- **Arg is `epic-NNNN`** (or omitted → most recently updated **wishlist-linked** epic): read the
+  epic manifest's `**Wishlist**: NNNN — milestone Mx` field. If the epic has no `**Wishlist**:`
+  field → "Epic epic-NNNN is not linked to a wishlist item; `/epic next-milestone` only applies to
+  wishlist-derived epics."
+- **Arg is `wishlist NNNN`**: use that item directly; the "current milestone" is the latest one
+  with a scaffolded epic in its `## Tracking` table.
+- Resolve the wishlist item dir at the monorepo root: `docs/wishlist/NNNN_slug/` (see **Monorepo
+  Root Resolution**). Read its `README.md` `## Tracking (epics / work items)` table and, if present,
+  its `roadmap.md` for the full milestone sequence (M0→Mn) + each milestone's primary repo.
+
+#### Step 2: Guard + pick the next milestone
+
+1. **Completion guard**: confirm the current milestone's epic is **Completed** (its Tracking-row
+   status is ✅, or its epic manifest Status is Completed). If not → "Current milestone Mx
+   (epic-NNNN) is not yet complete. Finish it (or pass `--force`) before scaffolding the next."
+2. **Next milestone** = the first milestone after Mx in the roadmap whose Tracking row is absent or
+   not yet scaffolded. If none remain → "All milestones of wishlist NNNN are scaffolded/complete —
+   roadmap exhausted." and stop.
+3. Determine the next milestone's **primary repo** from the roadmap row (e.g. roadmap.md's
+   `[repo]` tag). If ambiguous, ask the user which repo is primary.
+
+#### Step 3: Scaffold the next epic (reuse `/epic {repo} "prompt"`)
+
+Run the **Step 1–3 creation flow** of `/epic {primary-repo} "{next-milestone title}"` with:
+- the new epic manifest's `**Wishlist**: NNNN — milestone M(x+1)` field set;
+- the **wishlist linkage** (Step 2.4) applied — add a `## Tracking` row for the new epic
+  (status 🔄 Active) and keep the registry row under **Picked up**;
+- the new epic's `## Original Request` seeded from the wishlist item's milestone description.
+
+#### Step 4: Output
+
+```
+Advanced wishlist NNNN: Mx (epic-AAAA ✅) → M(x+1) (epic-BBBB, new)
+
+Created epic-BBBB: {next-milestone title}
+  Primary repo: {repo} → work-MMMM
+  Wishlist back-link updated (Tracking row + Picked up registry).
+
+Next: open a session in {repo}/ and run:
+  /work work-MMMM
+```
+
+---
+
+## Monorepo Root Resolution
+
+`/epic` operates on monorepo-root artifacts (`docs/epics/`, `docs/wishlist/`). It is normally run
+from the monorepo root (the `solution/` parent), but must be **free of repo context** — invocable
+from any child repo too. Resolve the root as:
+
+1. If `./docs/epics/` exists in the CWD → the CWD is the monorepo root; use `.`.
+2. Else if `../docs/epics/` exists → CWD is a child repo; the monorepo root is `..`. Operate there
+   (and child-repo work items are at `{root}/repos/{repo}/docs/work/` — or via the `## Repo
+   Aliases` table in the root `CLAUDE.md`).
+3. Else → error: "Could not locate the monorepo root (no `docs/epics/` here or in the parent)."
+
+All `docs/epics/...` and `docs/wishlist/...` paths in this document are relative to the resolved
+monorepo root. Repo names are always resolved via the root `CLAUDE.md` `## Repo Aliases` table — never hardcoded.
+
+---
+
 ## Sub-Epic Roadmap (template — for parent epics)
 
 A parent epic that spawns a sequenced set of child sub-epics MUST embed this section in its manifest. Place it after `## Tracked Repos` and before `## Dependencies`:
@@ -418,6 +582,8 @@ When a sub-epic is scaffolded, its child manifest's `**Related to**:` field MUST
 **Created**: {YYYY-MM-DD}
 **Last Updated**: {YYYY-MM-DD}
 **Primary Repo**: {repo-name}
+**Wishlist**: {NNNN — milestone Mx if this epic implements a docs/wishlist/ item; omit this line otherwise}
+**Epic Phase**: requirements
 **Last Synced**: Never
 
 ## Original Request
@@ -491,8 +657,34 @@ Use the most recently updated active epic (by Last Updated date in index).
 ### Relay to self
 If a `to-{this-same-repo}--*.md` file is found, ignore it (a repo doesn't relay to itself).
 
+## Wishlist Linkage
+
+Many epics are the act of **picking up** a `docs/wishlist/NNNN_slug/` item (see the `wishlist`
+skill). The wishlist defines a linkage protocol — *"when an item is picked up, scaffold it, link
+the new ID in its folder's README, and move its row to Picked up"* — and `/epic` is responsible
+for executing the **wishlist side** of that link so it is never left stale.
+
+**Detecting a wishlist origin** (any one of):
+- the user passes a wishlist number/path (e.g. "scaffold wishlist 0003", "from docs/wishlist/0003_*");
+- the epic prompt is quoting/derived from a wishlist item's README;
+- you are scaffolding a milestone of a multi-milestone wishlist roadmap.
+When unsure whether an epic maps to a wishlist item, ask the user rather than guessing.
+
+**The bidirectional contract** (maintained by `/epic` create — Step 2.4 — and `/epic sync` — Step 3):
+- Epic → wishlist: the epic manifest carries `**Wishlist**: NNNN — milestone Mx`.
+- Wishlist → epic: the wishlist item's `## Tracking (epics / work items)` table has a row for this
+  epic + its work item(s) + status, and the registry (`docs/wishlist/README.md`) lists the item
+  under **Picked up** with the epic recorded.
+- The work item inherits the `**Wishlist**:` field from its epic (Step 3).
+
+**Multi-milestone items**: one wishlist item may map to several epics (one per milestone, M0→Mn).
+The item stays a single registry row under **Picked up**; its `## Tracking` table grows one row
+per milestone/epic. Do **not** create a new wishlist item per milestone.
+
 ## Integration with Other Commands
 
 - `/work work-NNNN` — Resume a work item created by `/epic` (in child repo)
 - `/work --epic work-NNNN` — Promote an existing work item to an epic (in child repo)
 - `/work --sync epic-NNNN` — Sync cross-repo state from a child repo (preferred over `/epic sync`)
+- `wishlist` skill — Captures deferred items into `docs/wishlist/`; `/epic` picks them up and
+  maintains the back-link (see **Wishlist Linkage** above).
