@@ -11,7 +11,8 @@ resolves the root via **Monorepo Root Resolution** (below). Child repos can also
 
 ```bash
 /epic {repo} "prompt"                   # Create new epic with primary repo
-/epic sync [epic-NNNN]                  # Full cross-repo sync for all tracked repos
+/epic board [epic-NNNN]                 # Conductor dashboard: barrier + ready-set + "DO THIS NEXT"
+/epic sync [epic-NNNN]                  # Deliver relays (pull) + recompute barrier + update manifests
 /epic status [epic-NNNN]                # Dashboard of all repos' status
 /epic show [epic-NNNN]                  # Detailed epic manifest view
 /epic list                              # List all epics
@@ -19,6 +20,25 @@ resolves the root via **Monorepo Root Resolution** (below). Child repos can also
 /epic update-sub [epic-NNNN] {phase} {status}  # Mark sub-epic row status (e.g. V1.1 Completed)
 /epic next-milestone [epic-NNNN | wishlist NNNN]  # After a wishlist-linked epic completes, scaffold the next milestone's epic
 ```
+
+> ## ⚙️ Conductor model (barrier-synchronized) — READ FIRST
+>
+> An epic advances **one phase at a time across ALL its repos**: `requirements → planning →
+> implementation → validation`. **No repo starts phase P+1 until every tracked repo has settled
+> phase P AND all relays for phase P are resolved** (the global barrier; a late-surfacing
+> dependency is caught while everyone is still at the same gate). The **solution root is the sole
+> conductor** — it owns sync and tells the human what to run where. (Full rationale is recorded in
+> the project's decision log under `docs/dev/decisions/` when present; the operative rules are all
+> inline here and below — this command is self-contained.)
+>
+> Key consequences for this command:
+> - **`/work --sync` is REMOVED for epic-bound work.** Child repos only do phase work + write
+>   `upstream/to-*` relays; the conductor (`/epic sync`) delivers them. (`/work --sync` survives
+>   only for standalone, non-epic work items.)
+> - **Relays are append-only.** Resolved relays move to `upstream/archive/`, never deleted.
+> - Each epic-bound work manifest carries `**Epic Phase Done**: <phase>`; the epic manifest carries
+>   `**Epic Phase**: <phase>`. The barrier is computed from these, not from prose.
+> - **`scripts/epic-board.sh`** is the read-only conductor view; `/epic board` runs it + interprets.
 
 > **Two "next" commands, two roadmap sources** — keep them distinct:
 > - `/epic next` reads a **parent epic's** own `## Sub-Epic Roadmap` (epic-of-epics).
@@ -187,9 +207,33 @@ Next: Open a Claude session in {repo}/ and run:
 
 ---
 
+### When user runs: `/epic board [epic-NNNN]`
+
+The **conductor view — one command that refreshes, then tells you the next action.** Two steps:
+
+1. **Refresh first (sync):** run the full `/epic sync` flow for this epic — deliver any pending
+   `to-*` relays, archive resolved relays, scaffold any newly-targeted repo, recompute each work
+   item's `**Epic Phase Done**` and the epic's `**Epic Phase**`, reflect to the wishlist. This is a
+   near no-op when nothing is pending. (This is why `/epic board` exists as a Claude command and not
+   just the raw script — only Claude can do the nuanced delivery/reconciliation; a shell script
+   cannot. Running the board therefore always shows freshly-synced state, so you never run two
+   commands.)
+2. **Render:** run `scripts/epic-board.sh {epic-NNNN}`, present its output verbatim, and add a
+   one-line interpretation. The script computes, from `**Epic Phase Done**` fields + open relay
+   files: the barrier phase, each repo's state (🟢 ACT / ⏳ BLOCKED / 🔵 WORKING / ✅ at-barrier), and
+   a single **DO THIS NEXT** (the bottleneck repo with inbound asks, or the phase command to run in
+   the lagging repos).
+
+For a **read-only glance or a passive monitor** (no sync, no mutation), run
+`scripts/epic-board.sh [epic] [--watch]` directly — e.g. leave `--watch` open in a tab.
+
+---
+
 ### When user runs: `/epic sync [epic-NNNN]`
 
-Full cross-repo synchronization from the parent directory. If no epic ID is provided, sync the most recently updated active epic.
+Full cross-repo synchronization from the parent directory (**the conductor's only mutating action**).
+The solution root is the sole syncer — child repos never run `/work --sync` under an epic. If no epic
+ID is provided, sync the most recently updated active epic.
 
 #### Step 1: Load Epic
 
@@ -226,12 +270,27 @@ For each repo in the Tracked Repos table:
        ```
 
      **In both cases**:
-     - Delete the `to-` file from source repo (it's been delivered)
+     - **Archive, don't delete**: move the source `to-` file to `{repo}/docs/work/work-MMMM/upstream/archive/`
+       (it's been delivered; the history is needed for round/cycle detection). Never `rm` it.
      - Add entry to epic's Relay Log table
+     - **Round-cap guard**: if this same ordered edge (`{source}→{target}`) has already appeared
+       **3+ times in the current phase** in the Relay Log, do NOT silently re-deliver — flag it:
+       "⚠️ {source} ↔ {target} has exchanged 3 rounds this phase without settling — human decision
+       needed," and list the open asks.
 
-#### Step 3: Update Epic Manifest
+2b. **Resolve answered inbound relays**: for each `from-*` relay a repo has now acted on (its ask is
+    satisfied / replied to), move it to that repo's `upstream/archive/`. Only **open** relays
+    (files directly under `upstream/`, excluding `archive/`) hold the barrier.
 
-- Update each repo's Phase and Status in the Tracked Repos table
+#### Step 3: Update Epic Manifest + recompute the barrier
+
+- Update each repo's Phase and Status in the Tracked Repos table, **and set each work manifest's
+  `**Epic Phase Done**: <phase>`** to the highest epic phase that repo has settled.
+- **Recompute the barrier**: `Epic Phase = min(Epic Phase Done across repos) + 1`. Set the epic
+  manifest's `**Epic Phase**:` field. The barrier is **open** (advance the phase) only when every
+  repo's `Epic Phase Done` ≥ the prior phase **AND** there are zero open relays anywhere.
+- Run `scripts/epic-board.sh {epic-NNNN}` and include its output in the summary so the human sees
+  the recomputed "DO THIS NEXT."
 - Update Last Synced timestamp
 - Add change log entries for all actions taken
 - **Reflect status to the wishlist (if the epic has a `**Wishlist**:` field).** Update the
@@ -524,6 +583,7 @@ When a sub-epic is scaffolded, its child manifest's `**Related to**:` field MUST
 **Last Updated**: {YYYY-MM-DD}
 **Primary Repo**: {repo-name}
 **Wishlist**: {NNNN — milestone Mx if this epic implements a docs/wishlist/ item; omit this line otherwise}
+**Epic Phase**: requirements
 **Last Synced**: Never
 
 ## Original Request
