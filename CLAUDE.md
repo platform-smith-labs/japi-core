@@ -169,6 +169,25 @@ All commands support standalone usage without work items:
 /planv0 "Implement dark mode"                   # → docs/plans/
 ```
 
+## Workflow Hierarchy (wishlist → epic → work)
+
+Development is organized in three **optional-nesting** tiers (commands in `.claude/commands/`, plus the `wishlist` skill):
+
+- **wishlist item** — a deferred, cross-cutting idea, at the **monorepo root** under `docs/wishlist/NNNN_slug/`. Picked up into 0..N epics over time (one per milestone). Capture new ones with the `wishlist` skill.
+- **epic** — cross-repo coordination, at the monorepo root under `docs/epics/epic-NNNN/`. **Optional** — an epic can exist without a wishlist item.
+- **work item** — this repo's execution unit, at `docs/work/work-NNNN/`. **Optional parent** — a work item can be **standalone** (`/work "…"`), epic-owned, or wishlist-derived through its epic.
+
+**Run from this repo:**
+- `/work "description"` — create a work item (auto research + requirements)
+- `/work work-NNNN` — resume; then `/planv0` → `/implement_plan` → `/commit` (and `/journal`, `/learn`)
+- `/work --epic work-NNNN` — promote a work item to a cross-repo epic
+- `/work --sync epic-NNNN` — pull cross-repo messages **and** push this work item's status **up the chain** (work → epic → wishlist, each hop only if that parent exists)
+- `wishlist` skill — park a deferred cross-cutting idea
+
+**Run from the monorepo root** (the dir containing `docs/epics/` + `docs/wishlist/`): `/epic <repo> "…"` (create), `/epic sync`, `/epic status|show|list`, and **`/epic next-milestone [epic-NNNN | wishlist NNNN]`** — after a wishlist-linked epic completes, scaffold the next milestone's epic with the back-link maintained. (These resolve the root automatically, so they also work from here, but conventionally run at the root.)
+
+**This repo:** Shared Go API-framework library (no service port) — consumed by orchestrator + ps-api. Changes here ripple to both consumers, so a change is often the library strand of a cross-repo epic; bump/verify the consumers in lockstep.
+
 ## Custom Commands
 
 ### Work Management
