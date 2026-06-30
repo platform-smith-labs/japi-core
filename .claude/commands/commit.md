@@ -2,6 +2,24 @@
 
 You are tasked with creating git commits for the changes made during this session using the Conventional Commits specification.
 
+## Invocation
+
+```bash
+/commit                # Interactive: plan commits, present plan, ask before executing
+/commit --force        # Non-interactive: plan + execute immediately, NO confirmation prompt
+```
+
+`--force` (alias: `auto`) is for **unattended / autonomous use** (e.g. when `/work … auto`
+runs `/commit --force` after an implementation phase). In force mode:
+
+- **Skip the "Shall I proceed?" confirmation** in step 4 — go straight from planning (step 3) to
+  execution (step 5).
+- The optional pre-commit code-reviewer check (step 2) becomes **non-blocking**: if it surfaces
+  critical issues, record them in the commit body / session output but still commit (the loop
+  surfaces them rather than halting on a prompt that no human will answer).
+- Everything else — Conventional Commits format, submodule-first ordering, the no-attribution
+  rule — is unchanged. **Force mode still does NOT push or open a PR**; it only commits.
+
 ## Process:
 
 1. **Check Session Context First:**
@@ -89,6 +107,7 @@ You are tasked with creating git commits for the changes made during this sessio
      - Show the commit message(s) you'll use in Conventional Commits format
    - Include quality check summary if performed
    - Ask: "I plan to create [N] commit(s) ([X] in submodules, [Y] in parent repo) with these changes. Shall I proceed?"
+   - **In `--force` mode, skip this confirmation entirely** — proceed directly to step 5.
 
 5. **Execute upon confirmation using subagent:**
 

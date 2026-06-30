@@ -6,7 +6,8 @@
 
 ```bash
 /work "Natural language prompt"       # Auto-create work + research + requirements
-/work work-NNNN                       # Resume existing work item from current status
+/work work-NNNN                       # Resume existing work item (review-gated: prompts for next step)
+/work work-NNNN auto                  # Autonomous: EXECUTE one phase of work, then stop (loop-friendly)
 /work --epic work-NNNN               # Promote existing work item to cross-repo epic
 /work --sync epic-NNNN               # Sync cross-repo state for an epic
 /work show work-NNNN                  # Show work item details
@@ -210,6 +211,13 @@ After both research and requirements are complete:
 
 **Resume an existing work item from its current status.** This makes `/work` idempotent — it picks up where the last session left off.
 
+> **Review-gated (default) vs autonomous.** The steps below are the **review-gated** default: at a
+> phase boundary they **print the next command** (`/planv0`, `/implement_plan`) and hand control
+> back to you. To make `/work` **execute** that next step instead of printing it — so a worker
+> session drives itself in a loop — use **`/work work-NNNN auto`** (see **Autonomous mode** below).
+> Both paths share the same relay-handling and barrier rules; they differ only in whether a phase
+> boundary stops for you or runs the work.
+
 1. Read `docs/work/work-NNNN/manifest.md`
 2. If `epic/` folder exists, read `epic/context.md` for cross-repo context
 3. **Open inbound relays take precedence (epic-bound only).** If the manifest has `**Epic**:
@@ -261,6 +269,80 @@ epic. Honor these rules in EVERY phase (requirements, planning, implementation),
 
 **If no epic context exists** (standalone work item), proceed normally and `/work --sync` is N/A —
 the barrier + conductor apply only to epic-bound work. (Backward compatible.)
+
+---
+
+### When user runs: `/work work-NNNN auto` (autonomous mode)
+
+**Same as `/work work-NNNN` resume, but at a phase boundary it EXECUTES exactly one phase of work,
+records the outcome, and STOPS — instead of printing the next command for you to run.** This is the
+mode to put in a loop (e.g. `/loop /work work-NNNN auto`): each worker session drives itself through
+research → requirements → planning → implementation → commit without you relaying commands. Accepts
+`auto` (positional) or `--auto`.
+
+#### Invariants (must hold every invocation)
+
+1. **One phase per invocation, then STOP.** Do not chain phases. The loop re-invokes for the next
+   one. (This keeps each iteration cheap to reason about and barrier-safe.)
+2. **Barrier-safe for epic-bound work.** Never advance past the epic's current `**Epic Phase**`.
+   Do the barrier phase, set `**Epic Phase Done**`, STOP. The conductor (`/epic board`/`/epic sync`
+   at the solution root) is the **only** thing that opens the barrier — `auto` mode **never** runs
+   `/epic sync` and never edits the epic manifest.
+3. **Loop-safe / idempotent.** If there is nothing actionable this iteration (at the barrier waiting
+   on other repos, blocked, or completed), **report it in one line and STOP without mutating** any
+   file. Re-running must not create duplicate work or re-do a finished phase.
+
+#### Algorithm
+
+1. **Read state.** Resolve and read `docs/work/work-NNNN/manifest.md`. Note `Status`, `**Epic**`,
+   `**Epic Phase Done**`. If `**Epic**: epic-NNNN` is present, also read the epic manifest's
+   `**Epic Phase**` field (resolve the epic dir via the monorepo root, same as `/epic`). Read
+   `epic/context.md` if present.
+
+2. **Inbound relays are the highest-priority unit of work (epic-bound).** If there are any **open**
+   `upstream/from-*` relays (directly under `upstream/`, not `upstream/archive/`), process them per
+   **Epic-aware work** above (validate → act → reply relay if needed → archive), update the
+   manifest, and **STOP** — relays are this invocation's one phase-unit. Do not also advance a phase
+   in the same run.
+
+3. **Pick the target phase (exactly one).**
+   - **Epic-bound:** compare phase ordinals `requirements(1) < planning(2) < implementation(3) <
+     validation(4)`.
+     - If `ord(Epic Phase Done) ≥ ord(Epic Phase)` → this repo is **at the barrier**. Output
+       `✅ {repo} settled @ {Epic Phase Done}; waiting on conductor/other repos.` and **STOP**
+       (no mutation).
+     - Else **target = the epic's `Epic Phase`** (the barrier phase). Never pick a phase beyond it.
+   - **Standalone:** target = the next pending phase implied by `Status` (see mapping below).
+
+4. **Execute the target phase — and only that phase — to completion:**
+   | Target phase | Action (run the command's logic inline) | Status after |
+   |---|---|---|
+   | `requirements` (from 🎯 Proposed / 📚 Researching) | Run **Phase 2 + Phase 3** (research + requirements) from the `/work "prompt"` flow | 📝 Requirements |
+   | `planning` (from 📝 Requirements) | Execute **`/planv0 --work work-NNNN`** logic | 🎨 Planning |
+   | `implementation` (from 🎨 Planning / 🔄 In Implementation) | Execute **`/implement_plan docs/work/work-NNNN/plans/master.md`** logic; when implementation is complete, run **`/commit --force`** (auto-commit only — no push/PR) | 🔄 In Implementation → ✅ Completed when done |
+   | `validation` | Run the plan's tests / validation steps | ✅ Completed (or 🔴 Blocked on failure) |
+
+5. **Record and STOP.**
+   - **Epic-bound:** set `**Epic Phase Done**: <target>` in the manifest, add a Change Log entry,
+     and STOP. Output: `✅ {repo} settled {target}. Conductor will advance the barrier.` Do **not**
+     run `/epic sync`, do **not** prompt the user, do **not** start the next phase.
+   - **Standalone:** update `Status`, mark Workflow Progress, add a Change Log entry, and STOP. The
+     loop's next invocation continues from the new status.
+   - On a blocker (failed validation, missing plan, unresolved dependency): set 🔴 Blocked, record
+     the blocker in the manifest, output one line naming it, and STOP (do not retry in a tight loop).
+
+#### How the two loops cooperate
+
+```
+solution root (conductor loop):   /loop /epic board epic-NNNN     # sync relays + recompute barrier
+each repo (worker loop):          /loop /work work-NNNN auto       # execute current barrier phase, stop
+```
+
+The worker reads `**Epic Phase**` (barrier) and acts only up to it; the conductor reads every repo's
+`**Epic Phase Done**` and opens the barrier when all repos settle + no relays are open. Neither loop
+mutates the other's authority — workers own `Epic Phase Done` + relays; the conductor owns
+`Epic Phase` + relay delivery. A worker that's at the barrier idles cheaply (step 3 STOP) until the
+conductor advances `Epic Phase`, at which point the next worker iteration does the new phase.
 
 ---
 
@@ -606,6 +688,11 @@ The implement_plan command MUST:
 - Planning is **manual** (triggered by `/planv0 --work work-NNNN`)
 - Implementation is **manual** (triggered by `/implement_plan --work work-NNNN`)
 - User reviews and provides feedback between each phase
+
+**Exception — autonomous mode (`/work work-NNNN auto`):** the per-phase review gate is removed.
+Each invocation executes one phase (planning, implementation, or commit) and stops, so the item
+advances without manual relaying. Intended for loop-driven worker sessions; see **Autonomous mode**
+above. The default `/work work-NNNN` keeps the review gates.
 
 ## Examples
 
