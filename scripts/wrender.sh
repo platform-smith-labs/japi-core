@@ -48,6 +48,7 @@ field() { jq -rs --arg k "$1" \
   'map(select((.type=="created" or .type=="meta_changed") and has($k)) | .[$k]) | (last // "—")' "$LOG"; }
 
 title="$(jq -rs 'map(select(.type=="created"))[0].title // "Untitled"' "$LOG")"
+request="$(jq -rs 'map(select(.type=="created"))[0].request // ""' "$LOG")"
 created_ts="$(jq -rs '.[0].ts // ""' "$LOG")"
 updated_ts="$(jq -rs '.[-1].ts // ""' "$LOG")"
 status_key="$(jq -rs 'map(select(.type=="status_changed") | .to) | (last // "proposed")' "$LOG")"
@@ -57,6 +58,13 @@ priority="$(field priority)"; effort="$(field effort)"
 
 created_date="${created_ts%%T*}"; [[ -n "$created_date" ]] || created_date="—"
 updated_date="${updated_ts%%T*}"; [[ -n "$updated_date" ]] || updated_date="—"
+
+# Original Request — the user's verbatim prompt (load-bearing context for git-resume).
+# Rendered as a blockquote when present; omitted entirely when absent (legacy items).
+request_section=""
+if [[ -n "$request" ]]; then
+  request_section="## Original Request"$'\n\n'"$(printf '%s\n' "$request" | sed 's/^/> /')"$'\n\n'
+fi
 
 # status key → badge (the only place the emoji vocabulary lives)
 case "$status_key" in
@@ -133,7 +141,7 @@ cat > "$TMP" <<EOF
 **Priority**: $priority
 **Estimated Effort**: $effort
 
-## Artifacts
+${request_section}## Artifacts
 
 $artifacts
 

@@ -84,7 +84,7 @@ One JSON object per line, appended by `scripts/wlog.sh`. Every event carries:
 
 | `type` | Required fields | Optional | Meaning / when appended |
 |--------|-----------------|----------|--------------------------|
-| `created` | `title`, `slug`, `kind` (`work`\|`epic`), `repo`, `owner` | `epic`, `wishlist`, `priority`, `effort` | item created (always `seq:1`) |
+| `created` | `title`, `slug`, `kind` (`work`\|`epic`), `repo`, `owner` | `request` (user's verbatim prompt → `## Original Request`), `epic`, `wishlist`, `priority`, `effort` | item created (always `seq:1`) |
 | `status_changed` | `to` (status key) | `from`, `note` | lifecycle transition (incl. blocked/on_hold/cancelled/completed) |
 | `phase_done` | `phase` (`requirements`\|`planning`\|`implementation`\|`validation`) | `note` | the epic-barrier signal — this item settled a phase |
 | `artifact_added` | `kind` (`research`\|`requirements`\|`issue`\|`plan`\|`implementation`\|`other`), `path` | `title` | a content artifact was created |

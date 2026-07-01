@@ -136,12 +136,15 @@ You MUST execute this **3-phase automatic workflow**:
    - Append the creation event, then render the manifest:
      ```bash
      scripts/wlog.sh "$WD" created title="<Generated Title>" slug="$SLUG" kind=work \
-       repo=<this-repo> owner=<owner-email> [epic=<epic-id>] [wishlist=<n>] [priority=<P>] [effort=<S|M|L>]
+       repo=<this-repo> owner=<owner-email> request="<the user's verbatim prompt>" \
+       [epic=<epic-id>] [wishlist=<n>] [priority=<P>] [effort=<S|M|L>]
      scripts/wrender.sh "$WD"
      ```
      Omit `epic=`/`wishlist=` for a standalone item; include them only when the parent exists.
-   - The user's original prompt is preserved on the `created` event (the renderer surfaces it). Do
-     **not** hand-write a manifest — `wrender.sh` generates it, with a "DO NOT EDIT BY HAND" banner.
+   - **Always pass `request=`** with the user's original prompt verbatim — `wrender.sh` surfaces it as
+     the `## Original Request` section (load-bearing context for git-resume). `wlog.sh` JSON-encodes it
+     safely, so quotes/newlines in the prompt are fine. Do **not** hand-write a manifest — `wrender.sh`
+     generates it, with a "DO NOT EDIT BY HAND" banner.
 
 4. **Registry is generated — do not hand-maintain an index**
    - There is **no** `docs/work/index.md` row to edit. Regenerate the roll-up with
