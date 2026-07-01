@@ -170,7 +170,9 @@ render() {
   EPIC_TITLE="$(awk -F'— ' '/^# Epic:/{print $2; exit}' "$EPIC_MD")"
   local EPIC_PHASE; EPIC_PHASE="$(awk -F': ' '/^\*\*Epic Phase\*\*:/{print $2; exit}' "$EPIC_MD" | sed 's/ *$//')"
   local WISH; WISH="$(awk -F': ' '/^\*\*Wishlist\*\*:/{print $2; exit}' "$EPIC_MD" | sed 's/ *$//')"
-  local SYNCED; SYNCED="$(awk -F': ' '/^\*\*Last Synced\*\*:/{print $2; exit}' "$EPIC_MD" | cut -c1-10)"
+  # "Last Synced" was removed from the manifest in the event-log rewrite; show the
+  # authored "Last Updated" instead (sync-time is no longer a stored field).
+  local UPDATED; UPDATED="$(awk -F': ' '/^\*\*Last Updated\*\*:/{print $2; exit}' "$EPIC_MD" | cut -c1-10)"
 
   # Membership: DERIVED from child logs (each declares epic=<id> at creation).
   # Legacy fallback: parse the manifest's Tracked Repos table for older epics
@@ -219,14 +221,15 @@ render() {
   for ((j=0;j<n;j++)); do
     if (( ${R_in[$j]} > 0 )); then R_state[$j]="🟢 ACT — ${R_in[$j]} inbound ask(s); answer + reply"
     elif (( ${R_out[$j]} > 0 )); then R_state[$j]="⏳ BLOCKED — ${R_out[$j]} reply pending (run /epic sync)"
-    elif (( ${R_done[$j]} == base && base < 5 )); then R_state[$j]="🔵 WORKING — owes $(phase_name $target)"
+    elif (( ${R_done[$j]} >= 4 )); then R_state[$j]="✅ complete (validated)"
+    elif (( ${R_done[$j]} == base )); then R_state[$j]="🔵 WORKING — owes $(phase_name $target)"
     else R_state[$j]="✅ settled @ $(phase_name ${R_done[$j]}) (at barrier)"; fi
   done
 
   # ---- header ----
   printf '\033[1m%s\033[0m\n' "EPIC $EPIC_ID"
   [[ -n "$EPIC_TITLE" ]] && printf '  %s\n' "$EPIC_TITLE"
-  printf '  phase: \033[1m%s\033[0m   ·   wishlist: %s   ·   last synced: %s\n' "${EPIC_PHASE:-$(phase_name $base)}" "${WISH:-—}" "${SYNCED:-never}"
+  printf '  phase: \033[1m%s\033[0m   ·   wishlist: %s   ·   last updated: %s\n' "${EPIC_PHASE:-$(phase_name $base)}" "${WISH:-—}" "${UPDATED:---}"
   printf '%s\n' "────────────────────────────────────────────────────────────────────────────"
   printf '%-14s %-34s %-14s %s\n' "REPO" "WORK ITEM" "DONE" "STATE"
   for ((j=0;j<n;j++)); do
@@ -246,9 +249,11 @@ render() {
     else
       NEXT="👉 run  /epic sync  at the solution root to deliver $total_open pending relay(s)."
     fi
-  elif (( base >= 5 )); then
-    STATEMSG="✅ All repos validated."
-    NEXT="🎉 Epic complete — run /epic sync to mark it Completed (and /epic next-milestone if wishlist-linked)."
+  elif (( base >= 4 )); then
+    # validation is the terminal phase — every tracked repo has settled it (and zero
+    # open relays, or we'd be in the settling branch above) ⇒ the epic is complete.
+    STATEMSG="✅ All repos settled validation — epic complete."
+    NEXT="🎉 Epic complete — set the epic manifest Status: Completed (and /epic next-milestone if wishlist-linked)."
   else
     STATEMSG="▶ $(phase_name $base) settled — barrier OPEN, advance to $(phase_name $target)"
     local laggards=""
@@ -270,7 +275,8 @@ render() {
   # ---- --write: inject the derived board into the epic manifest ----
   if (( WRITE )); then
     local barrier_phase; barrier_phase="$(phase_name "$base")"
-    (( base >= 5 )) && barrier_phase="done"
+    # validation settled across all repos with no open relays ⇒ complete
+    if (( base >= 4 && total_open == 0 )); then barrier_phase="complete"; fi
     local bf; bf="$(mktemp)"
     {
       printf '**Epic Phase**: %s\n\n' "$barrier_phase"
