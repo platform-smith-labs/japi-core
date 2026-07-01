@@ -19,7 +19,8 @@
 
 ```bash
 /work "Natural language prompt"       # Auto-create work + research + requirements
-/work <id>                            # Resume existing work item from current status
+/work <id>                            # Resume (review-gated: prints the next command, hands back to you)
+/work <id> auto                       # Autonomous: EXECUTE one phase, append events, STOP (loop-friendly)
 /work --epic <id>                     # Promote existing work item to cross-repo epic
 /work show <id>                       # Show work item details
 /work list                            # List all work items
@@ -253,6 +254,13 @@ After both research and requirements are complete:
 
 **Resume an existing work item from its current status.** This makes `/work` idempotent — it picks up where the last session left off.
 
+> **Review-gated (default) vs autonomous.** The steps below are the **review-gated** default: at a
+> phase boundary they **print the next command** (`/planv0`, `/implement_plan`) and hand control back
+> to you. To make `/work` **execute** that next step instead of printing it — so a worker session
+> drives itself in a loop — use **`/work <id> auto`** (see **Autonomous mode** below). Both paths
+> share the same event-log recording and barrier/relay rules; they differ only in whether a phase
+> boundary stops for you or runs the work.
+
 1. Resolve `<id>` → `$WD` (see **Resolving Existing IDs**). Read `$WD/manifest.md` for the rendered
    view, and `$WD/work.jsonl` if you need the precise event history (the manifest is folded from it).
 2. If `epic/` folder exists, read `epic/context.md` for cross-repo context (authored prose).
@@ -324,6 +332,91 @@ Honor these rules in EVERY phase (requirements, planning, implementation), not j
 
 **If no epic context exists** (standalone work item), proceed normally — the barrier + conductor apply
 only to epic-bound work. (Backward compatible.)
+
+---
+
+### When user runs: `/work <id> auto` (autonomous mode)
+
+**Same as `/work <id>` resume, but at a phase boundary it EXECUTES exactly one phase of work, records
+the outcome as `work.jsonl` events, and STOPS — instead of printing the next command for you to run.**
+This is the mode to put in a loop (e.g. `/loop /work <id> auto`): each worker session drives itself
+through research → requirements → planning → implementation → commit without you relaying commands.
+Accepts `auto` (positional) or `--auto`.
+
+Everything about state is unchanged from the rest of this command: **append events via `scripts/wlog.sh`,
+regenerate with `scripts/wrender.sh`, never hand-edit `manifest.md`.** `auto` only removes the review
+gate; the recording model is identical.
+
+#### Invariants (must hold every invocation)
+
+1. **One phase per invocation, then STOP.** Do not chain phases. The loop re-invokes for the next one.
+   (Keeps each iteration cheap to reason about and barrier-safe.)
+2. **Barrier-safe for epic-bound work.** Never advance past the epic's current `**Epic Phase**`. Do the
+   barrier phase, append `phase_done phase=<target>`, STOP. The conductor (`/epic board`/`/epic sync` at
+   the monorepo root) is the **only** thing that opens the barrier — `auto` mode **never** runs `/epic
+   sync`, never edits the epic manifest, and never hand-edits its own `Epic Phase Done` (that line is
+   rendered from the `phase_done` event).
+3. **Loop-safe / idempotent.** If there is nothing actionable this iteration (at the barrier waiting on
+   other repos, blocked, or completed), **report it in one line and STOP without appending any event.**
+   Re-running must not create duplicate work or re-do a finished phase.
+
+#### Algorithm
+
+1. **Read state.** Resolve `<id>` → `$WD` and read `$WD/manifest.md` (the generated view; fold detail
+   from `$WD/work.jsonl` if needed). Note `Status`, `**Epic**`, `**Epic Phase Done**`. If `**Epic**:
+   <epic-id>` is present, also read the epic manifest's generated `**Epic Phase**` field (resolve the
+   epic dir via the monorepo root, same as `/epic`). Read `epic/context.md` if present.
+
+2. **Open inbound relays are the highest-priority unit of work (epic-bound).** If the manifest's
+   **Open Relays** lists any **open inbound** relay (a `relay_received` with no matching
+   `relay_resolved` for `direction=inbound`+`slug`), process them per **Epic-aware work** above
+   (validate → act → reply relay if needed → append `relay_resolved` + `wrender.sh`), and **STOP** —
+   relays are this invocation's one phase-unit. Do not also advance a phase in the same run.
+
+3. **Pick the target phase (exactly one).**
+   - **Epic-bound:** compare phase ordinals `requirements(1) < planning(2) < implementation(3) <
+     validation(4)`.
+     - If `ord(Epic Phase Done) ≥ ord(Epic Phase)` → this repo is **at the barrier**. Output
+       `✅ {repo} settled @ {Epic Phase Done}; waiting on conductor/other repos.` and **STOP** (no event
+       appended).
+     - Else **target = the epic's `Epic Phase`** (the barrier phase). Never pick a phase beyond it.
+   - **Standalone:** target = the next pending phase implied by `Status` (see mapping below).
+
+4. **Execute the target phase — and only that phase — to completion.** Record via events, then STOP:
+
+   | Target phase | Action (run the command's logic inline) | Events appended (then `wrender.sh "$WD"`) |
+   |---|---|---|
+   | `requirements` (from 🎯 Proposed / 📚 Researching) | Run **Phase 2 + Phase 3** (research + requirements) from the `/work "prompt"` flow | `status_changed to=researching` → `artifact_added kind=research …` → `status_changed to=requirements` → `artifact_added kind=requirements …`; if epic-bound, `phase_done phase=requirements` |
+   | `planning` (from 📝 Requirements) | Execute **`/planv0 --work <id>`** logic | `status_changed to=planning` → `artifact_added kind=plan …` (per plan file); if epic-bound, `phase_done phase=planning` |
+   | `implementation` (from 🎨 Planning / 🔄 In Implementation) | Execute **`/implement_plan $WD/plans/master.md`** logic; when implementation is complete, run **`/commit --force`** (auto-commit only — no push/PR) | `status_changed to=implementation` → (on completion) `status_changed to=completed`; if epic-bound, `phase_done phase=implementation` |
+   | `validation` | Run the plan's tests / validation steps | if epic-bound, `phase_done phase=validation`; `status_changed to=completed` (or `to=blocked` on failure) |
+
+5. **Record and STOP.**
+   - **Epic-bound:** append `phase_done phase=<target>` (with a `note=` describing what settled), run
+     `wrender.sh "$WD"`, and STOP. Output: `✅ {repo} settled {target}. Conductor will advance the
+     barrier.` Do **not** run `/epic sync`, do **not** prompt the user, do **not** start the next phase.
+   - **Standalone:** append the `status_changed` for the new status (with a `note=`), run `wrender.sh
+     "$WD"`, and STOP. The loop's next invocation continues from the new status.
+   - **On a blocker** (failed validation, missing plan, unresolved dependency): append
+     `status_changed to=blocked note="<the blocker>"`, run `wrender.sh "$WD"`, output one line naming
+     it, and STOP (do not retry in a tight loop).
+
+#### How the two loops cooperate
+
+```
+solution root (conductor loop):   /loop /epic board <epic-id>     # sync relays + recompute barrier
+each repo (worker loop):          /loop /work <id> auto           # execute current barrier phase, stop
+```
+
+The worker reads the epic's `**Epic Phase**` (barrier, generated by `epic-board.sh`) and acts only up
+to it; the conductor folds every repo's `phase_done` events (→ `Epic Phase Done`) + open relays and
+opens the barrier when all repos settle with zero open relays. Neither loop mutates the other's
+authority — workers own `phase_done` + relay events; the conductor owns the derived `Epic Phase` +
+relay delivery. A worker at the barrier idles cheaply (step 3 STOP) until the conductor advances the
+barrier, at which point the next worker iteration does the new phase.
+
+**Exception recap:** `auto` removes the per-phase review gate — each invocation executes one phase and
+stops, so the item advances without manual relaying. The default `/work <id>` keeps the review gates.
 
 ---
 
