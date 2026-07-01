@@ -72,7 +72,7 @@ Creating work item with automatic research and requirements...
 I notice this is a new requirement that fits into the existing work item.
 Let me add this as a new phase to the current plan.
 
-[Execute: /planv0 --work work-NNNN "new requirement"]
+[Execute: /planv0 --work work-<id> "new requirement"]
 ```
 
 ### When to Use `/commit`
@@ -103,7 +103,7 @@ User Request
 │
 ├─ Already in work item context?
 │  ├─ New requirement discovered?
-│  │  └─ Use /planv0 --work work-NNNN "new thing"
+│  │  └─ Use /planv0 --work work-<id> "new thing"
 │  │     (incremental planning)
 │  └─ Continue with workflow
 │
@@ -133,16 +133,16 @@ The primary workflow centers around **work items** that group related artifacts.
 ```bash
 # 1. Start with a natural language description
 /work "Add OAuth social login to the app"
-# → Creates work-NNNN with automatic research + requirements
+# → Creates work-<id> with automatic research + requirements
 
-# 2. Review research and requirements in docs/work/work-NNNN/
+# 2. Review research and requirements in docs/work/work-<id>/
 
 # 3. Create implementation plan when ready
-/planv0 --work work-NNNN
+/planv0 --work work-<id>
 # → Creates master.md + phase plans with agent recommendations
 
 # 4. Implement phases
-/implement_plan docs/work/work-NNNN/plans/master.md
+/implement_plan docs/work/work-<id>/plans/master.md
 # → Uses domain specialists + quality gates
 
 # 5. Commit changes
@@ -152,7 +152,7 @@ The primary workflow centers around **work items** that group related artifacts.
 
 ### Work Item Structure
 
-All artifacts are organized under `docs/work/work-NNNN/`:
+All artifacts are organized under `docs/work/work-<id>/`:
 - `manifest.md` - Work item metadata and artifact index
 - `research/NNNN-*.md` - Research documents
 - `requirements/NNNN-*.md` - Requirements specifications
@@ -174,17 +174,17 @@ All commands support standalone usage without work items:
 Development is organized in three **optional-nesting** tiers (commands in `.claude/commands/`, plus the `wishlist` skill):
 
 - **wishlist item** — a deferred, cross-cutting idea, at the **monorepo root** under `docs/wishlist/NNNN_slug/`. Picked up into 0..N epics over time (one per milestone). Capture new ones with the `wishlist` skill.
-- **epic** — cross-repo coordination, at the monorepo root under `docs/epics/epic-NNNN/`. **Optional** — an epic can exist without a wishlist item.
-- **work item** — this repo's execution unit, at `docs/work/work-NNNN/`. **Optional parent** — a work item can be **standalone** (`/work "…"`), epic-owned, or wishlist-derived through its epic.
+- **epic** — cross-repo coordination, at the monorepo root under `docs/epics/epic-<id>/`. **Optional** — an epic can exist without a wishlist item.
+- **work item** — this repo's execution unit, at `docs/work/work-<id>/`. **Optional parent** — a work item can be **standalone** (`/work "…"`), epic-owned, or wishlist-derived through its epic.
 
 **Run from this repo:**
 - `/work "description"` — create a work item (auto research + requirements)
-- `/work work-NNNN` — resume; then `/planv0` → `/implement_plan` → `/commit` (and `/journal`, `/learn`)
-- `/work --epic work-NNNN` — promote a work item to a cross-repo epic
-- `/work --sync epic-NNNN` — pull cross-repo messages **and** push this work item's status **up the chain** (work → epic → wishlist, each hop only if that parent exists)
+- `/work work-<id>` — resume; then `/planv0` → `/implement_plan` → `/commit` (and `/journal`, `/learn`)
+- `/work --epic work-<id>` — promote a work item to a cross-repo epic
+- `/work --sync epic-<id>` — **standalone/non-epic work only.** For epic-bound work this is removed: upward rollup is **derived** by `scripts/epic-board.sh` (child logs → epic board); child repos never push status up.
 - `wishlist` skill — park a deferred cross-cutting idea
 
-**Run from the monorepo root** (the dir containing `docs/epics/` + `docs/wishlist/`): `/epic <repo> "…"` (create), `/epic sync`, `/epic status|show|list`, and **`/epic next-milestone [epic-NNNN | wishlist NNNN]`** — after a wishlist-linked epic completes, scaffold the next milestone's epic with the back-link maintained. (These resolve the root automatically, so they also work from here, but conventionally run at the root.)
+**Run from the monorepo root** (the dir containing `docs/epics/` + `docs/wishlist/`): `/epic <repo> "…"` (create), `/epic sync`, `/epic status|show|list`, and **`/epic next-milestone [epic-<id> | wishlist NNNN]`** — after a wishlist-linked epic completes, scaffold the next milestone's epic with the back-link maintained. (These resolve the root automatically, so they also work from here, but conventionally run at the root.)
 
 **This repo:** Shared Go API-framework library (no service port) — consumed by orchestrator + ps-api. Changes here ripple to both consumers, so a change is often the library strand of a cross-repo epic; bump/verify the consumers in lockstep.
 
@@ -192,21 +192,21 @@ Development is organized in three **optional-nesting** tiers (commands in `.clau
 
 ### Work Management
 - `/work "description"` - Create work item with auto research + requirements
-- `/work show work-NNNN` - Display work item details
+- `/work show work-<id>` - Display work item details
 - `/work list` - List all work items
-- `/work update work-NNNN --status X` - Update status
+- `/work update work-<id> --status X` - Update status
 
 ### Research & Requirements
-- `/research [--work work-NNNN] "topic"` - Conduct thorough research
+- `/research [--work work-<id>] "topic"` - Conduct thorough research
   - Uses codebase-locator, codebase-analyzer, domain experts
   - Creates numbered research documents
-- `/new_req [--work work-NNNN] "requirements"` - Document requirements
+- `/new_req [--work work-<id>] "requirements"` - Document requirements
   - Uses ux-researcher, architect-reviewer, qa-expert for validation
-- `/new_issue [--work work-NNNN] "issue"` - Create issue tickets
+- `/new_issue [--work work-<id>] "issue"` - Create issue tickets
   - Uses debugger, performance-engineer, security-engineer based on type
 
 ### Planning & Implementation
-- `/planv0 [--work work-NNNN]` - Create implementation plans
+- `/planv0 [--work work-<id>]` - Create implementation plans
   - Initial planning: Creates master + phase plans
   - Incremental planning: Adds phases to existing plans (phase-2.1, phase-3.1)
   - Uses architect-reviewer, domain specialists, qa-expert
@@ -262,7 +262,7 @@ When you discover new requirements during implementation:
 
 ```bash
 # Add a new phase to existing plan
-/planv0 --work work-NNNN "Add caching layer for performance"
+/planv0 --work work-<id> "Add caching layer for performance"
 
 # Agent will:
 # 1. Analyze existing phases (1, 2, 3)
@@ -302,14 +302,14 @@ The `planv0` command validates and ensures NO placeholders remain.
 ## File Numbering Conventions
 
 All documents use sequential numbering within their scope:
-- **Work items**: `work-NNNN-MMDDHHMM-slug` for new items (e.g. `work-0027-05071523-runtime-sessions-count`); legacy `work-NNNN` form is preserved without migration. See `/work` command's "ID Format" for the full spec.
-- **Epics**: `epic-NNNN-MMDDHHMM-slug` for new items (e.g. `epic-0050-05071523-runtime-sessions-count`); legacy `epic-NNNN` form preserved. See `/epic` command's "ID Format".
+- **Work items**: `work-<YYMMDDHHMM>-<slug>` (e.g. `work-2607010322-dark-mode`) — a timestamped slug with **no sequential number** (no scan/counter → race-safe across pods). State is an **append-only event log** (`work.jsonl`, written via `scripts/wlog.sh`); `manifest.md` is **generated** by `scripts/wrender.sh` and must never be hand-edited. Legacy `work-NNNN…` items are preserved without migration. See [`docs/dev/decisions/append-only-work-event-log.md`](docs/dev/decisions/append-only-work-event-log.md) + the `/work` command.
+- **Epics**: `epic-<YYMMDDHHMM>-<slug>` (e.g. `epic-2606301200-uiux-revamp`) — timestamped slug, no sequential number. The Tracked-Repos board + Epic Phase barrier are **derived** from child work logs by `scripts/epic-board.sh` (membership auto-discovered from each child's `epic=` declaration) — never hand-synced. Legacy `epic-NNNN…` preserved. See the `/epic` command.
 - **Research**: `0001-topic-research.md`, `0002-topic-research.md` (per work item or global)
 - **Requirements**: `0001-feature-req.md`, `0002-feature-req.md` (per work item or global)
 - **Issues**: `0001-bug-issue.md`, `0002-task-issue.md` (per work item or global)
 - **Plans**: `phase-1.md`, `phase-2.md`, `phase-2.1.md` (per work item)
 
-When invoking commands like `/research --work work-NNNN`, you may pass the short ID (`work-0027`); commands resolve it to the actual directory.
+When invoking commands like `/research --work work-<id>`, you may pass the short ID (`work-0027`); commands resolve it to the actual directory.
 
 ## Status Values for Work Items
 
@@ -629,7 +629,7 @@ When using this template in a code project:
 ```
 docs/
 ├── work/                    # Work items (created by /work)
-│   └── work-NNNN/
+│   └── work-<id>/
 │       ├── manifest.md
 │       ├── research/
 │       ├── requirements/

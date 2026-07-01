@@ -2,15 +2,35 @@
 
 You are tasked with creating implementation plans. You can adapt from quick planning for simple tickets to comprehensive interactive planning for complex features. Be skeptical, thorough, and work collaboratively with the user to produce high-quality technical specifications.
 
+> ## ⚠️ Work-item state is an append-only event log
+>
+> **Never hand-edit `manifest.md`.** A work item's state lives in `<WD>/work.jsonl`; the manifest is a
+> GENERATED view. Record state by appending an event with `scripts/wlog.sh` and regenerating with
+> `scripts/wrender.sh "$WD"` — never by editing the manifest's Status line, Workflow Progress checkbox,
+> Artifacts list, or Change Log. **Plan files (`plans/master.md`, `plans/phase-N.md`) remain authored
+> markdown prose** — keep writing them exactly as before; only the work-item *state bookkeeping* moves
+> to the event log. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
+>
+> The events this command appends:
+> - `scripts/wlog.sh "$WD" status_changed to=planning [note="..."]` — when planning starts
+> - `scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/master.md title="Master plan"` — per plan file
+> - `scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/phase-1.md title="Phase 1 — ..."` — per phase file
+> - `scripts/wlog.sh "$WD" phase_done phase=planning [note="..."]` — when the plan is complete
+>
+> ALWAYS follow any `wlog.sh` append(s) with `scripts/wrender.sh "$WD"` to regenerate the manifest.
+
 ## Resolving `--work` IDs
 
-When the user passes `--work work-NNNN` (e.g., `--work work-0027`), the value is a **short ID**. The actual directory name may be either the short legacy form (`work-NNNN`) or the new conflict-resistant form (`work-NNNN-MMDDHHMM-slug`). Before any file read/write, **resolve the short ID to the real directory**:
+When the user passes `--work <id>` (e.g., `--work work-2607010322-dark-mode`, or just a slug fragment),
+resolve it to the work item directory by **glob, not arithmetic**:
 
-1. **Try exact match** — Glob `docs/work/{arg}/manifest.md`. If found, use `docs/work/{arg}/`.
-2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/manifest.md` (matches the new format).
-3. **If exactly one match**, use that directory throughout the command. If zero, error: "Work item {arg} not found." If multiple, error and list matches.
+- Glob `docs/work/*<id-or-slug>*/` (e.g. `docs/work/*dark-mode*/` or `docs/work/*2607010322*/`).
+- **If exactly one match**, use that directory as `$WD` throughout the command. If zero, error: "Work
+  item {arg} not found." If multiple, error and list the matches so the user can disambiguate.
 
-Throughout the rest of this document, `work-NNNN` is shorthand for the resolved work item directory name — substitute the actual resolved value when constructing paths.
+Never scan-max-increment or compute a sequential number. Throughout the rest of this document, `$WD`
+(equivalently `docs/work/work-NNNN/` in older examples) is shorthand for the resolved work item
+directory — substitute the actual resolved path when constructing file paths.
 
 ## 🧰 Available Tools & Agents Reference
 
@@ -181,7 +201,7 @@ When this command is invoked, determine the mode and check for existing plans:
 1. **Work Item Mode** (`--work work-NNNN` provided):
    - Plans are associated with a work item
    - Create plans in `docs/work/work-NNNN/plans/`
-   - Update work manifest with plan artifacts
+   - Record plan artifacts and status as `work.jsonl` events (`wlog.sh` + `wrender.sh`), never by hand-editing the manifest
    - Load research and requirements from work item context
 
 2. **Standalone Mode** (no `--work` parameter):
@@ -369,19 +389,20 @@ Or specify different placement: "after phase-X" or "end"
 4. **Update progress tracking table** with new row
 5. **Add to change log**: `{date}: Added phase-2.1 for [requirement]`
 
-### Step 7: Update Work Manifest (If Work Item Mode)
+### Step 7: Register the New Phase Artifact (If Work Item Mode)
 
-1. **Add new phase to artifacts list**:
-   ```markdown
-   ### Plans
-   - [Master Plan](./plans/master.md)
-   - [Phase 1: {Title}](./plans/phase-1.md)
-   - [Phase 2: {Title}](./plans/phase-2.md)
-   - [Phase 2.1: {New Title}](./plans/phase-2.1.md) ({date}) <!-- NEW -->
-   - [Phase 3: {Title}](./plans/phase-3.md)
-   ```
+Record the new phase plan as an event — do **not** hand-edit the manifest's Artifacts list or Change
+Log (both are generated from the log). Append one `artifact_added` event for the new phase file and
+regenerate:
 
-2. **Update change log**: `{date}: Added phase-2.1 to implementation plan`
+```bash
+scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/phase-2.1.md title="Phase 2.1 — {New Title}" note="incremental: added for {requirement}"
+scripts/wrender.sh "$WD"
+```
+
+(The brief "added for X" rationale rides on the event's `note=` — it appears in the generated Change
+Log. The master plan's own phase list and change-log section, edited in Step 6, are plan-internal
+authored prose and stay as-is.)
 
 ### Step 8: Confirm to User
 
@@ -446,9 +467,9 @@ Or specify different placement: "after phase-X" or "end"
    - **IMPORTANT**: Address requirements from ALL documents in the plan
 
 4. **Read Upstream Messages (if epic-linked)**:
-   - Check if manifest has `**Epic**: epic-NNNN`
-   - If yes, check for `docs/work/work-NNNN/upstream/from-*.md` files
-   - Read EACH upstream message for cross-repo constraints and interface contracts
+   - Check if the manifest header shows an `**Epic**: epic-<YYMMDDHHMM>-<slug>` line
+   - If yes, read the inbound relay messages at `$WD/relays/inbound/from-*.md` (their open/resolved lifecycle is in `work.jsonl`; the generated manifest's **Open Relays** + **Upstream Messages** sections summarize them)
+   - Read EACH inbound relay for cross-repo constraints and interface contracts
    - These messages contain requirements from OTHER repos (API contracts, message formats, DB schemas)
    - **IMPORTANT**: Incorporate upstream constraints into the plan. Add an "## Upstream Dependencies" section to `master.md` if any upstream messages exist, listing:
      - What other repos expect from this repo
@@ -512,31 +533,42 @@ Based on research + requirements:
    - Address all goals and acceptance criteria gathered from user
    - Include clear scope and objectives
 
-### Step 3: Update Work Manifest (If Using Work Item)
+### Step 3: Record Plan State as Events (If Using Work Item)
 
-**If `--work work-NNNN` was provided**:
+**If `--work work-NNNN` was provided** — append events to `work.jsonl` and regenerate the manifest.
+**Never hand-edit `manifest.md`** (no Status line, no Workflow Progress checkbox, no Artifacts list,
+no Change Log, no Last Updated — all of these are generated by `wrender.sh` from the events below).
 
-1. **Add Plan Artifacts** to manifest (`docs/work/work-NNNN/manifest.md`):
-   - Under `## Artifacts > ### Plans` section
-   - List master plan and all phase plans with **relative links**:
-     - `[Master Plan](./plans/master.md)`
-     - `[Phase 1: {Title}](./plans/phase-1.md)`
-     - `[Phase 2: {Title}](./plans/phase-2.md)`
-   - Include creation date
+1. **Transition status to planning**:
+   ```bash
+   scripts/wlog.sh "$WD" status_changed to=planning
+   ```
 
-2. **Update Status**:
-   - Change from: `📝 Requirements`
-   - Change to: `🎨 Planning`
+2. **Register each plan file** (one `artifact_added` event per file — master + every phase):
+   ```bash
+   scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/master.md  title="Master plan"
+   scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/phase-1.md title="Phase 1 — {Title}"
+   scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/phase-2.md title="Phase 2 — {Title}"
+   # …one per phase file…
+   ```
 
-3. **Update Workflow Progress**:
-   - Mark: `[x] Planning`
+3. **Mark the planning phase done** (the epic-barrier signal that the plan is complete). A brief
+   one-line rationale can ride on `note=`; it surfaces in the generated Change Log:
+   ```bash
+   scripts/wlog.sh "$WD" phase_done phase=planning note="implementation plan created"
+   ```
 
-4. **Add Change Log Entry**:
-   - `{YYYY-MM-DD}: Implementation plan created`
+4. **Regenerate the manifest** (always, after the appends above):
+   ```bash
+   scripts/wrender.sh "$WD"
+   ```
+
+The generated manifest will reflect the 🎨 Planning status, the registered plan artifacts, and the
+change-log entries — projected from the events, with no hand-editing.
 
 **If standalone**:
-- Skip manifest updates
-- Plans are self-contained
+- No work item, no event log — plans are self-contained
+- Plan-internal status (master/phase markdown) is the only progress surface
 
 ### Step 4: Confirm to User
 
@@ -1434,9 +1466,9 @@ Based on this phase's focus on [phase focus], prioritize:
 - [ ] Documentation updated
 - [ ] Migration scripts tested (if applicable)
 - [ ] Success criteria met
-- [ ] Phase plan status updated to ✅ Completed
-- [ ] Master plan phase listing and progress table updated
-- [ ] Work manifest updated with phase completion
+- [ ] Phase plan status updated to ✅ Completed (plan-internal status)
+- [ ] Master plan phase listing and progress table updated (plan-internal status)
+- [ ] Work-item state recorded via event — append `phase_done`/`status_changed` with `scripts/wlog.sh` and run `scripts/wrender.sh "$WD"`; never hand-edit `manifest.md`
 
 ## Next Phase
 
@@ -1870,7 +1902,7 @@ Assistant:
 5. Creates: docs/work/work-0001/plans/master.md (single file)
 6. Validates with: code-reviewer, frontend-developer, react-specialist
 7. Includes: /frontend-design skill reference for implementation
-8. Updates manifest with plan artifacts
+8. Appends events (status_changed to=planning, artifact_added per plan file, phase_done phase=planning) + runs wrender.sh to regenerate the manifest
 ```
 
 ### Example 2: Incremental Planning - Adding New Phase
@@ -1894,7 +1926,7 @@ Assistant (Incremental Planning Mode):
    - Phase 2: Needs update (must read from database)
 9. Updates: phase-2.md with new prerequisites
 10. Updates: master.md with phase-1.1 entry
-11. Updates: manifest.md with new phase artifact
+11. Appends: artifact_added kind=plan path=plans/phase-1.1.md + runs wrender.sh (manifest regenerated, never hand-edited)
 
 Output:
 ✅ Phase 1.1 created: User Preference Storage
@@ -1928,7 +1960,7 @@ Assistant:
 7. Validates with: code-reviewer, architect-reviewer, security-engineer,
    postgres-pro, api-designer, fullstack-developer, payment-integration
 8. Includes skill references: /frontend-design for UI, /commit for commits
-9. Updates manifest with all plan artifacts
+9. Appends events (status_changed to=planning, artifact_added per plan file, phase_done phase=planning) + runs wrender.sh to regenerate the manifest
 
 # Later, during implementation...
 User: /planv0 --work work-0002 "Add real-time inventory notifications"

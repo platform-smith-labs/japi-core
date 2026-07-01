@@ -2,15 +2,18 @@
 
 Conduct thorough research and create research documents for analysis, investigation, and understanding within a work item context.
 
+> **Work-item state is an append-only event log** — register artifacts with `scripts/wlog.sh "$WD" artifact_added ...` then `scripts/wrender.sh "$WD"`; never hand-edit `manifest.md`. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
+
 ## Resolving `--work` IDs
 
-When the user passes `--work work-NNNN` (e.g., `--work work-0027`), the value is a **short ID**. The actual directory name may be either the short legacy form (`work-NNNN`) or the new conflict-resistant form (`work-NNNN-MMDDHHMM-slug`). Before any file read/write, **resolve the short ID to the real directory**:
+When the user passes `--work <id>` (e.g., `--work work-0027` or `--work work-2607010322-dark-mode`), the value is a **short reference**, never an index to compute. The directory may be the legacy short form (`work-NNNN`), the legacy slug form (`work-NNNN-MMDDHHMM-slug`), or the event-log form (`work-<YYMMDDHHMM>-<slug>`). Before any file read/write, **resolve the reference to the real directory by glob — never by arithmetic**:
 
-1. **Try exact match** — Glob `docs/work/{arg}/manifest.md`. If found, use `docs/work/{arg}/` as the work item directory.
-2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/manifest.md`. This matches the new format whose directory is `{arg}-MMDDHHMM-slug`.
-3. **If exactly one match**, use that directory throughout the command. If zero, error: "Work item {arg} not found in docs/work/." If multiple, error and list the matches.
+1. **Try exact match** — Glob `docs/work/{arg}/` (or `repos/<repo>/docs/work/{arg}/`). If found, use it as the work item directory.
+2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/` (matches the slug-suffixed forms).
+3. **Else glob by slug fragment** — Glob `docs/work/*{arg}*/` for a bare slug reference.
+4. **If exactly one match**, use that directory throughout the command. If zero, error: "Work item {arg} not found in docs/work/." If multiple, error and list the matches.
 
-Throughout the rest of this document, `work-NNNN` is shorthand for **the resolved work item directory name** — substitute the actual resolved value when constructing paths.
+Throughout the rest of this document, `work-NNNN` / `$WD` is shorthand for **the resolved work item directory** — substitute the actual resolved path when constructing commands. State for that item lives in `$WD/work.jsonl`; `$WD/manifest.md` is a generated projection of it.
 
 ## PART I - CONTEXT GATHERING
 
@@ -20,16 +23,16 @@ The `--work work-NNNN` parameter is **OPTIONAL** but recommended for organized k
 
 **When `--work work-NNNN` is provided**:
 1. Resolve the short ID to the actual directory (see "Resolving `--work` IDs" above).
-2. Read work manifest: `docs/work/work-NNNN/manifest.md`
+2. Read work manifest: `docs/work/work-NNNN/manifest.md` (a generated view — read it for context, never edit it)
 3. Read existing research documents in `docs/work/work-NNNN/research/` for context
 4. Determine research focus based on work item and user's research topic
 5. Plan to create research in `docs/work/work-NNNN/research/NNNN-*.md`
-6. Plan to update work manifest when complete
+6. Plan to register the artifact in the event log when complete (see "Register the Artifact" below) — do **not** plan to hand-edit the manifest
 
 **When `--work` is NOT provided** (Standalone Mode):
 1. Create research in `docs/research/NNNN-*.md`
-2. Use global numbering (check all files in `docs/research/`)
-3. No manifest updates
+2. Use local numbering within `docs/research/` (highest existing NNNN + 1)
+3. No event log, no manifest — and do not hand-maintain any global `docs/research/index.md` registry (it is derivable from the directory)
 4. Self-contained research document
 
 ### If a task/topic/issue is mentioned:
@@ -118,23 +121,34 @@ After codebase research completes, determine research domain and add expert vali
 3. Note any risks or concerns discovered
 4. Present findings to the user
 
-### Step 4: Update Work Manifest (If Using Work Item)
+### Step 4: Register the Artifact in the Event Log (If Using Work Item)
+
+**Do NOT hand-edit `manifest.md`.** Work-item state is an append-only event log (`work.jsonl`); the manifest is regenerated from it. With `$WD` = the resolved work item directory and `<rel-path>` = the artifact path *relative to `$WD`* (e.g. `research/NNNN-{slug}-research.md`):
 
 **If `--work work-NNNN` was provided**:
-1. Read work manifest: `docs/work/work-NNNN/manifest.md`
-2. Add research document to `## Artifacts > ### Research` section
-   - Format: `- [NNNN: {Title}](./research/NNNN-{slug}-research.md) ({date})`
-3. Add change log entry: `{date}: Added research document NNNN`
-4. Save updated manifest
+1. Append an `artifact_added` event:
+   ```bash
+   scripts/wlog.sh "$WD" artifact_added kind=research path=<rel-path> title="{Title}"
+   ```
+2. Move the item into the researching state (research → `researching`). Append this only when the item is not already in `researching` or a later phase:
+   ```bash
+   scripts/wlog.sh "$WD" status_changed to=researching
+   ```
+3. Regenerate the manifest from the log:
+   ```bash
+   scripts/wrender.sh "$WD"
+   ```
+
+The `artifact_added` event records the registration; `wrender.sh` folds it into the manifest's Artifacts section, Change Log, Status, and Last Updated automatically. Never open `manifest.md` to edit any of these by hand.
 
 **If standalone**:
-- Skip manifest updates
-- Research document is self-contained
+- No event log and no manifest — the research document is self-contained.
+- Do not hand-maintain any global registry/index of `docs/research/`; it is derivable from the directory listing.
 
 ### Step 5: Provide Research Summary
 
 1. Present key findings and insights
-2. **If work item mode**: Note that manifest was updated with new research
+2. **If work item mode**: Note that the artifact was registered in the event log and the manifest regenerated
 3. **If standalone**: Note the research document location
 4. Suggest next steps or areas for further investigation
 5. **If work item mode**: Suggest adding more research with `/research --work work-NNNN "topic"`

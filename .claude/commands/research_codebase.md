@@ -2,6 +2,8 @@
 
 You are tasked with conducting comprehensive research across the codebase to answer user questions by spawning parallel sub-agents and synthesizing their findings.
 
+> **Work-item state is an append-only event log** — when this research belongs to a work item, register the artifact with `scripts/wlog.sh "$WD" artifact_added ...` then `scripts/wrender.sh "$WD"`; never hand-edit `manifest.md`. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
+
 ## Initial Setup:
 
 When this command is invoked, respond with:
@@ -149,8 +151,15 @@ Then wait for the user's research query.
      - Create permalinks: `https://github.com/{owner}/{repo}/blob/{commit}/{file}#L{line}`
    - Replace local file references with permalinks in the document
 
-8. **Sync and present findings:**
+8. **Register (if part of a work item) and present findings:**
    - Ensure the research document is saved in the appropriate location
+   - **If this research was saved under a work item directory** (`$WD`, e.g. `docs/work/<id>/research/...` or `repos/<repo>/docs/work/<id>/research/...`): register it in the append-only event log instead of hand-editing the manifest. With `<rel-path>` = the artifact path *relative to `$WD`*:
+     ```bash
+     scripts/wlog.sh "$WD" artifact_added kind=research path=<rel-path> title="{Topic}"
+     scripts/wlog.sh "$WD" status_changed to=researching   # only if not already researching or later
+     scripts/wrender.sh "$WD"
+     ```
+     `wrender.sh` regenerates the manifest (Artifacts, Change Log, Status, Last Updated). **Never open `manifest.md` to edit it by hand**, and do not maintain any standalone `docs/research/` index — it is derivable from the directory.
    - Present a concise summary of findings to the user
    - Include key file references for easy navigation
    - Ask if they have follow-up questions or need clarification

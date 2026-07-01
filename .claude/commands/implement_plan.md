@@ -2,6 +2,10 @@
 
 You are tasked with implementing an approved technical plan. These plans contain phases with specific changes and success criteria.
 
+> **Work-item state is an append-only event log.** Never hand-edit `manifest.md` — it is generated. Record work-item state by appending events with `scripts/wlog.sh "$WD" …` and regenerating the manifest with `scripts/wrender.sh "$WD"`. Plan checkboxes (`plans/phase-N.md`, `plans/master.md`) remain plan content and stay the authoring surface for plan progress. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
+>
+> Throughout this command, `"$WD"` is the work item directory extracted from the plan path (e.g. `docs/work/work-NNNN-MMDDHHMM-slug/`).
+
 ## Command Usage
 
 ```bash
@@ -24,16 +28,13 @@ When given a plan path:
    - Check for any existing checkmarks (- [x])
    - **Extract work item reference** if present (look for `Work Item: work-NNNN` — note that the value may be the short ID, the full new-format ID, or absent)
 
-2. **If work item detected** (use the directory name extracted from the plan path):
-   - Read work manifest: `docs/work/work-NNNN/manifest.md`
-   - Read ALL research documents: `docs/work/work-NNNN/research/*.md` (for context)
-   - Read ALL requirements documents: `docs/work/work-NNNN/requirements/*.md` (for acceptance criteria)
-   - Read ALL issues: `docs/work/work-NNNN/issues/*.md` (if any)
-   - Read all plan files: `docs/work/work-NNNN/plans/*.md`
-   - Prepare to update manifest with progress
+2. **If work item detected** (use the directory name extracted from the plan path — this is `"$WD"`):
+   - Load **just-in-time**, not everything up front. Read the plan you were given (`master.md` or a `phase-N.md`) and only the artifacts the **current phase** references.
+   - When a phase cites a specific research/requirements/issue document, read **that** document then — not the whole `research/`, `requirements/`, or `issues/` folder.
+   - Do **not** read `manifest.md` to drive state — it is a generated projection of `work.jsonl`. Work-item state is recorded by appending events (see Phase Completion below).
 
-3. **Read all files mentioned** in the plan
-   - **Read files fully** - never use limit/offset parameters, you need complete context
+3. **Read the files the current phase references** (in the plan and in the artifacts it cites)
+   - **Read files fully** - never use limit/offset parameters, you need complete context for the files you do open
 
 4. **Create a todo list** to track your progress
 
@@ -109,32 +110,38 @@ After implementing each phase, run quality validation:
    - Linting passes: `pnpm lint`
    - Build succeeds: `pnpm build`
 
-4. **Update plan checkboxes** - Mark phase as complete
+4. **Update plan checkboxes** — Mark the phase complete in the plan files (these are plan content, the authoring surface for plan progress):
+   - **Phase plan file**: change the phase file's `**Status**` field, e.g. in `plans/phase-1.md` change `**Status**: Ready for Implementation` → `**Status**: ✅ Completed`.
+   - **Master plan**: in `plans/master.md`, update the inline phase listing status (e.g. `Status: ⏳ Not Started` → `Status: ✅ Completed`) and the progress-tracking table row (status, start/completion dates). If ALL phases are now complete, update master plan's top-level `**Status**` to `✅ Completed`.
 
-5a. **Update Phase Plan File Status**:
-   - Change the phase file's `**Status**` field from "Ready for Implementation" to "✅ Completed"
-   - Example: In `docs/work/work-NNNN/plans/phase-1.md`, change `**Status**: Ready for Implementation` to `**Status**: ✅ Completed`
+5. **Record work-item state in the event log** (if work item detected). This is the work item's state of record — append events, then regenerate the manifest. Do **not** hand-edit `manifest.md`, the change log, the workflow checkboxes, or `docs/work/index.md`; all of those are derived (the manifest from `work.jsonl`; the index from `ls docs/work/*/`).
 
-5b. **Update Master Plan Phase Status**:
-   - In `master.md`, update the inline phase listing status (e.g., `Status: ⏳ Not Started` → `Status: ✅ Completed`)
-   - Update the progress tracking table row with status, start date, and completion date
-   - If ALL phases are now complete, update master plan's top-level `**Status**` to `✅ Completed`
+   - **When implementation starts** (first phase begins):
+     ```bash
+     scripts/wlog.sh "$WD" status_changed to=implementation
+     scripts/wrender.sh "$WD"
+     ```
 
-5c. **Update Work Manifest** (if work item detected):
-   - Update `docs/work/work-NNNN/manifest.md`:
-     - First phase starts: status `🎨 Planning → 🔄 In Implementation`, check `[x] Implementation` in workflow progress
-     - All phases complete: status `🔄 In Implementation → ✅ Completed`, check `[x] Validation` in workflow progress
-     - Add change log entry for each phase completion
-   - Create/update implementation status: `docs/work/work-NNNN/implementation/status.md`
-     - Track phase completion
-     - Document decisions made
-     - Note any blockers or deviations
+   - **On each phase completion** (append a `phase_done` for the `implementation` phase; the optional `note=` is your one-line narrative for the change log):
+     ```bash
+     scripts/wlog.sh "$WD" phase_done phase=implementation note="<what this phase delivered>"
+     scripts/wrender.sh "$WD"
+     ```
 
-5d. **Update Work Index** (if work item detected and ALL phases complete):
-   - Update `docs/work/index.md`:
-     - Move the work item row from "Active Work Items" to "Completed Work Items"
-     - Update status to `✅ Completed`
-     - Update Artifacts column to reflect all artifact types (e.g., `R, Req, P, I`)
+   - **When validation passes** (all phases done and quality gates green):
+     ```bash
+     scripts/wlog.sh "$WD" status_changed to=completed
+     scripts/wlog.sh "$WD" phase_done phase=validation note="<validation summary>"
+     scripts/wrender.sh "$WD"
+     ```
+
+   - **Optional implementation notes**: if you keep a prose `implementation/status.md` (decisions, blockers, deviations), register it once as an artifact — don't treat it as state of record:
+     ```bash
+     scripts/wlog.sh "$WD" artifact_added kind=implementation path=implementation/status.md title="Implementation status"
+     scripts/wrender.sh "$WD"
+     ```
+
+   Always follow any `wlog.sh` append(s) with `scripts/wrender.sh "$WD"` so the generated `manifest.md` reflects the new events.
 
 6. **Proceed to next phase** only if quality gates pass
 
