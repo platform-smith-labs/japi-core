@@ -14,9 +14,13 @@ set -euo pipefail
 #   - No repo starts phase P+1 until every repo has settled phase P AND there
 #     are zero open relays.
 #   - Relay state is DERIVED from each child's append-only event log
-#     (<work>/work.jsonl): open = relay_sent/relay_received minus relay_resolved
-#     (by direction+slug). Legacy fallback: count files under <work>/upstream/.
-#     (See docs/dev/decisions/append-only-work-event-log.md.)
+#     (<work>/work.jsonl). A relay is ONE thing shared by two repos, keyed by
+#     slug; a leg (relay_sent on the source, relay_received on the target) is
+#     OPEN until the relay is settled — and ONE relay_resolved for that slug
+#     ANYWHERE in the epic closes BOTH legs (the "A1" rule — see relay_counts).
+#     So a source's outbound leg auto-closes when the target resolves; the
+#     source never has to emit its own resolution. Legacy fallback: count files
+#     under <work>/upstream/. (See docs/dev/decisions/append-only-work-event-log.md.)
 #   - Read-only by default. With --write it injects the derived Tracked Repos
 #     table + Epic Phase line into the epic manifest between BOARD anchors
 #     (the only sanctioned writer of those derived sections).
@@ -69,6 +73,36 @@ phase_cmd()  {
     *) echo "—" ;;
   esac
 }
+# repo_cwd <repo> -> directory to open a Claude session in (solution alias → root).
+repo_cwd() { if [[ "$1" == "solution" ]]; then echo "."; else echo "repos/$1"; fi; }
+# phase_slash <ord> <wid> <repo> -> the exact command (with the real work id) for that phase.
+# Validation is TWO-LAYER (see the barrier decision doc): every child repo runs its LOCAL suite and
+# relays its e2e-needs to solution; SOLUTION (the epic owner) authors + drives the cross-repo e2e and
+# is the final gate. So the validation command differs for solution vs a child repo.
+phase_slash() {
+  local ord="$1" wid="$2" repo="${3:-}"
+  case "$ord" in
+    1) echo "/work $wid" ;;
+    2) echo "/planv0 --work $wid" ;;
+    3) echo "/implement_plan docs/work/$wid/plans/master.md" ;;
+    4) if [[ "$repo" == "solution" ]]; then
+         echo "author + DRIVE the cross-repo e2e (epic Success Criteria) on a live stack — you are the e2e gate; resolve each repo's e2e-needs relay as it's covered+passing, then: scripts/wlog.sh docs/work/$wid phase_done phase=validation"
+       else
+         echo "run LOCAL suite; then relay e2e-needs → solution: write relays/outbound/to-solution--$repo-e2e-needs.md + scripts/wlog.sh docs/work/$wid relay_sent to=solution slug=$repo-e2e-needs relay_kind=blocks phase=validation ask=\"e2e coverage for $repo\"; then settle: scripts/wlog.sh docs/work/$wid phase_done phase=validation"
+       fi ;;
+    *) echo "/work $wid" ;;
+  esac
+}
+# open_inbound_slugs <wd> <resolved-slugs> -> space-separated slugs of this repo's OPEN
+# inbound relays: received here and NOT settled anywhere in the epic (the epic-global
+# <resolved-slugs> set — see the A1 rule in relay_counts).
+open_inbound_slugs() {
+  local wd="$1" resolved="${2:-}"
+  [[ -f "$wd/work.jsonl" ]] && command -v jq >/dev/null 2>&1 || return 0
+  jq -rs --arg res "$resolved" '
+    ($res|split(" ")|map(select(length>0))) as $r
+    | [ .[] | select(.type=="relay_received") | select(.slug as $s | ($r|index($s))|not) | .slug ] | join(" ")' "$wd/work.jsonl"
+}
 
 # ---- resolve epic dir ------------------------------------------------------
 resolve_epic() {
@@ -91,18 +125,23 @@ work_dir() {
   if [[ "$repo" == "solution" ]]; then echo "$ROOT/docs/work/$wid"; else echo "$ROOT/repos/$repo/docs/work/$wid"; fi
 }
 
-# relay_counts <wd>  -> echoes "<open-inbound> <open-outbound>"
-# New model: fold work.jsonl (relay_sent/received minus relay_resolved by dir+slug).
-# Legacy fallback: count files under <wd>/upstream/.
+# relay_counts <wd> <resolved-slugs>  -> echoes "<open-inbound> <open-outbound>"
+#
+# A1 RULE — a relay is ONE thing shared by two repos; ONE resolution closes BOTH legs.
+# A relay (identified by its slug) is SETTLED once ANY relay_resolved for that slug exists
+# ANYWHERE in the epic (the epic-global <resolved-slugs> set computed by epic_resolved_slugs).
+# Both the target's inbound leg (relay_received) and the source's OUTBOUND leg (relay_sent)
+# are then closed. This is the fix for dangling outbound legs: the source used to only ever
+# emit relay_synced (never a resolution), so relay_sent counted as open forever. Now the
+# outbound auto-closes the moment the target resolves — no separate direction=outbound event
+# needed. Legacy fallback: count files under <wd>/upstream/.
 relay_counts() {
-  local wd="$1" oin=0 oout=0
+  local wd="$1" resolved="${2:-}" oin=0 oout=0
   if [[ -f "$wd/work.jsonl" ]] && command -v jq >/dev/null 2>&1; then
-    oin=$(jq -rs '(map(select(.type=="relay_resolved")|(.direction+"/"+.slug))) as $r
-                  | [ .[] | select(.type=="relay_received")
-                      | select((("inbound/"+.slug)) as $k | ($r|index($k))|not) ] | length' "$wd/work.jsonl")
-    oout=$(jq -rs '(map(select(.type=="relay_resolved")|(.direction+"/"+.slug))) as $r
-                   | [ .[] | select(.type=="relay_sent")
-                       | select((("outbound/"+.slug)) as $k | ($r|index($k))|not) ] | length' "$wd/work.jsonl")
+    oin=$(jq -rs --arg res "$resolved" '($res|split(" ")|map(select(length>0))) as $r
+          | [ .[] | select(.type=="relay_received") | select(.slug as $s | ($r|index($s))|not) ] | length' "$wd/work.jsonl")
+    oout=$(jq -rs --arg res "$resolved" '($res|split(" ")|map(select(length>0))) as $r
+          | [ .[] | select(.type=="relay_sent") | select(.slug as $s | ($r|index($s))|not) ] | length' "$wd/work.jsonl")
   elif [[ -d "$wd/upstream" ]]; then
     oin=$(find "$wd/upstream" -maxdepth 1 -name 'from-*.md' 2>/dev/null | wc -l | tr -d ' ')
     oout=$(find "$wd/upstream" -maxdepth 1 -name 'to-*.md' 2>/dev/null | wc -l | tr -d ' ')
@@ -110,15 +149,16 @@ relay_counts() {
   echo "${oin:-0} ${oout:-0}"
 }
 
-# relay_list <wd> <repo>  -> one "  repo: <dir> <peer> — <slug>" per OPEN relay.
+# relay_list <wd> <repo> <resolved-slugs>  -> one "  repo: <dir> <peer> — <slug>" per OPEN
+# relay leg (slug not in the epic-global resolved set — see the A1 rule in relay_counts).
 relay_list() {
-  local wd="$1" repo="$2"
+  local wd="$1" repo="$2" resolved="${3:-}"
   if [[ -f "$wd/work.jsonl" ]] && command -v jq >/dev/null 2>&1; then
-    jq -rs --arg repo "$repo" '
-      (map(select(.type=="relay_resolved")|(.direction+"/"+.slug))) as $r
+    jq -rs --arg repo "$repo" --arg res "$resolved" '
+      ($res|split(" ")|map(select(length>0))) as $r
       | [ .[] | select(.type=="relay_sent" or .type=="relay_received")
           | {dir:(if .type=="relay_sent" then "outbound" else "inbound" end), slug:.slug, peer:(.to // .from // "—")} ]
-      | map(select(((.dir+"/"+.slug)) as $k | ($r|index($k))|not))
+      | map(select(.slug as $s | ($r|index($s))|not))
       | .[] | "  \($repo): \(.dir) \(.peer) — \(.slug)"' "$wd/work.jsonl"
   elif [[ -d "$wd/upstream" ]]; then
     find "$wd/upstream" -maxdepth 1 \( -name 'from-*.md' -o -name 'to-*.md' \) 2>/dev/null \
@@ -162,6 +202,23 @@ discover_children() {
   done | sort -u
 }
 
+# epic_resolved_slugs <epic-id> -> space-separated set of slugs that carry ANY relay_resolved
+# event in ANY of the epic's child logs. This is the epic-global "settled relays" set the A1
+# rule (see relay_counts) uses to close BOTH legs of a relay from a single resolution — so a
+# source's outbound leg auto-closes when the target resolves, without the source emitting its
+# own relay_resolved. Scans the same file set as discover_children.
+epic_resolved_slugs() {
+  local epic_id="$1" f
+  command -v jq >/dev/null 2>&1 || return 0
+  for f in "$ROOT"/docs/work/*/work.jsonl "$ROOT"/repos/*/docs/work/*/work.jsonl; do
+    [[ -f "$f" ]] || continue
+    jq -rs --arg e "$epic_id" '
+      if any(.[]; (.type=="created" or .type=="meta_changed") and (.epic==$e))
+      then ( .[] | select(.type=="relay_resolved") | .slug )
+      else empty end' "$f" 2>/dev/null
+  done | sort -u | tr '\n' ' '
+}
+
 render() {
   local EPIC_DIR EPIC_MD EPIC_ID EPIC_TITLE
   EPIC_DIR="$(resolve_epic "$EPIC_ARG")" || exit 1
@@ -169,6 +226,8 @@ render() {
   EPIC_ID="$(basename "$EPIC_DIR")"
   EPIC_TITLE="$(awk -F'— ' '/^# Epic:/{print $2; exit}' "$EPIC_MD")"
   local EPIC_PHASE; EPIC_PHASE="$(awk -F': ' '/^\*\*Epic Phase\*\*:/{print $2; exit}' "$EPIC_MD" | sed 's/ *$//')"
+  # A1: epic-global set of settled relay slugs — one resolution closes both legs (see relay_counts).
+  local RESOLVED; RESOLVED="$(epic_resolved_slugs "$EPIC_ID")"
   local WISH; WISH="$(awk -F': ' '/^\*\*Wishlist\*\*:/{print $2; exit}' "$EPIC_MD" | sed 's/ *$//')"
   # "Last Synced" was removed from the manifest in the event-log rewrite; show the
   # authored "Last Updated" instead (sync-time is no longer a stored field).
@@ -207,7 +266,7 @@ render() {
     [[ -z "$donejson" && -f "$wd/manifest.md" ]] && donefield="$(awk -F': ' '/^\*\*Epic Phase Done\*\*:/{print $2; exit}' "$wd/manifest.md" | sed 's/ *$//')"
     local doneword="${donejson:-${donefield:-$phasecell}}"
     local dord; dord="$(phase_ord "$doneword")"
-    local oin oout; read -r oin oout < <(relay_counts "$wd")
+    local oin oout; read -r oin oout < <(relay_counts "$wd" "$RESOLVED")
     R_repo[$i]="$repo"; R_wid[$i]="$wid"; R_phase[$i]="$doneword"; R_done[$i]="$dord"; R_in[$i]="$oin"; R_out[$i]="$oout"
     (( dord < base )) && base=$dord
     total_open=$(( total_open + oin + oout ))
@@ -216,6 +275,33 @@ render() {
   local n=$i
   (( base==99 )) && base=0
   local target=$(( base + 1 )); (( target > 5 )) && target=5
+
+  # ---- unambiguous barrier label -------------------------------------------
+  # The persisted "**Epic Phase**" field used to be the bare SETTLED-FLOOR name
+  # (e.g. "planning"), which reads as "we are IN planning, do not implement" —
+  # even when the barrier is actually OPEN to the next phase. That ambiguity
+  # made some repos hold while others proceeded. The label now always NAMES THE
+  # WORKABLE PHASE and its GATE explicitly:
+  #   "<phase> (OPEN)"  -> every repo MAY run <phase> now (this is the go signal)
+  #   "<phase> (HELD)"  -> blocked: relays in flight; nobody starts <phase> yet
+  #   "complete"        -> validation settled everywhere, zero relays
+  # BARRIER_SHORT feeds the header; BARRIER_LONG (with the reason) is persisted.
+  local BARRIER_SHORT BARRIER_LONG
+  if (( base >= 4 && total_open == 0 )); then
+    BARRIER_SHORT="complete"; BARRIER_LONG="complete"
+  elif (( total_open > 0 )); then
+    local _hp; _hp="$(phase_name $(( target > 4 ? 4 : target )))"
+    BARRIER_SHORT="$_hp (HELD)"
+    BARRIER_LONG="$_hp — HELD ($total_open open relay(s); resolve them before any repo starts $_hp)"
+  else
+    local _tp; _tp="$(phase_name $target)"
+    BARRIER_SHORT="$_tp (OPEN)"
+    if (( base == 0 )); then
+      BARRIER_LONG="$_tp — OPEN (kickoff — every repo may run $_tp now)"
+    else
+      BARRIER_LONG="$_tp — OPEN (all repos settled $(phase_name $base), zero open relays — every repo may run $_tp now)"
+    fi
+  fi
 
   # per-repo state label
   for ((j=0;j<n;j++)); do
@@ -229,7 +315,7 @@ render() {
   # ---- header ----
   printf '\033[1m%s\033[0m\n' "EPIC $EPIC_ID"
   [[ -n "$EPIC_TITLE" ]] && printf '  %s\n' "$EPIC_TITLE"
-  printf '  phase: \033[1m%s\033[0m   ·   wishlist: %s   ·   last updated: %s\n' "${EPIC_PHASE:-$(phase_name $base)}" "${WISH:-—}" "${UPDATED:---}"
+  printf '  barrier: \033[1m%s\033[0m   ·   wishlist: %s   ·   last updated: %s\n' "$BARRIER_SHORT" "${WISH:-—}" "${UPDATED:---}"
   printf '%s\n' "────────────────────────────────────────────────────────────────────────────"
   printf '%-14s %-34s %-14s %s\n' "REPO" "WORK ITEM" "DONE" "STATE"
   for ((j=0;j<n;j++)); do
@@ -241,11 +327,11 @@ render() {
   local NEXT="" STATEMSG=""
   if (( total_open > 0 )); then
     STATEMSG="⏳ Settling $(phase_name $target) — relays in flight (barrier held)"
-    # bottleneck = repo with open inbound (it unblocks the chain)
-    local actrepo=""
-    for ((j=0;j<n;j++)); do (( ${R_in[$j]} > 0 )) && { actrepo="${R_repo[$j]} (${R_wid[$j]})"; break; }; done
-    if [[ -n "$actrepo" ]]; then
-      NEXT="👉 open the ${actrepo%% *} tab → read upstream/from-*, validate, reply if needed. Then run /epic sync at root."
+    # count repos with an open inbound ask (they unblock the chain)
+    local nact=0
+    for ((j=0;j<n;j++)); do (( ${R_in[$j]} > 0 )) && nact=$(( nact + 1 )); done
+    if (( nact > 0 )); then
+      NEXT="👉 act in the $nact 🟢 ACT repo(s) — see 'run in each repo' below for the exact command per repo; then /epic sync at root."
     else
       NEXT="👉 run  /epic sync  at the solution root to deliver $total_open pending relay(s)."
     fi
@@ -258,7 +344,7 @@ render() {
     STATEMSG="▶ $(phase_name $base) settled — barrier OPEN, advance to $(phase_name $target)"
     local laggards=""
     for ((j=0;j<n;j++)); do (( ${R_done[$j]} == base )) && laggards+="${R_repo[$j]} "; done
-    NEXT="👉 run  $(phase_cmd $target)  in: ${laggards% }"
+    NEXT="👉 advance ${laggards% } to $(phase_name $target) — see 'run in each repo' below for the exact command per repo."
   fi
   printf '%s\n' "$STATEMSG"
   printf '\033[1m%s\033[0m\n' "$NEXT"
@@ -268,18 +354,50 @@ render() {
     printf '%s\n' "open relays:"
     for ((j=0;j<n;j++)); do
       local wd; wd="$(work_dir "${R_repo[$j]}" "${R_wid[$j]}")"
-      relay_list "$wd" "${R_repo[$j]}"
+      relay_list "$wd" "${R_repo[$j]}" "$RESOLVED"
     done
+  fi
+
+  # ---- per-repo action commands (ALWAYS emitted) --------------------------
+  # For every repo that has in-repo work to do — 🟢 ACT (open inbound ask) or
+  # 🔵 WORKING (owes the barrier's next phase) — print the exact, copy-pasteable
+  # command: which dir to open a Claude session in, and the slash command with
+  # the real work id. ACT repos also get the exact relay_resolved close command.
+  # Repos that are ⏳ BLOCKED (own the outbound, waiting on replies) or already
+  # at the barrier are intentionally omitted — their next move is `/epic sync`.
+  local any_act=0 printed_hdr=0
+  for ((j=0;j<n;j++)); do
+    local owed=0
+    if   (( ${R_in[$j]} > 0 )); then owed=$target                                  # ACT: do the owed phase, then resolve
+    elif (( ${R_out[$j]} == 0 && ${R_done[$j]} < target && ${R_done[$j]} < 4 )); then owed=$target  # WORKING: owes the barrier target (validation=4 is terminal)
+    else continue; fi
+    if (( printed_hdr == 0 )); then
+      printf '%s\n' "run in each repo (open a Claude session in the dir, then run the command):"
+      printed_hdr=1
+    fi
+    local cwd cmd; cwd="$(repo_cwd "${R_repo[$j]}")"; cmd="$(phase_slash "$owed" "${R_wid[$j]}" "${R_repo[$j]}")"
+    printf '  %-13s cd %-22s → in Claude:  %s\n' "${R_repo[$j]}" "$cwd" "$cmd"
+    if (( ${R_in[$j]} > 0 )); then
+      any_act=1
+      local wd slugs s; wd="$(work_dir "${R_repo[$j]}" "${R_wid[$j]}")"; slugs="$(open_inbound_slugs "$wd" "$RESOLVED")"
+      for s in $slugs; do
+        printf '  %-13s   then close inbound: scripts/wlog.sh docs/work/%s relay_resolved direction=inbound slug=%s && scripts/wrender.sh docs/work/%s\n' \
+          "" "${R_wid[$j]}" "$s" "${R_wid[$j]}"
+      done
+    fi
+  done
+  if (( any_act == 1 )); then
+    printf '%s\n' "then, back at the solution root:  /epic sync $EPIC_ID   (delivers replies, re-derives the barrier)"
   fi
 
   # ---- --write: inject the derived board into the epic manifest ----
   if (( WRITE )); then
-    local barrier_phase; barrier_phase="$(phase_name "$base")"
-    # validation settled across all repos with no open relays ⇒ complete
-    if (( base >= 4 && total_open == 0 )); then barrier_phase="complete"; fi
+    # BARRIER_LONG names the workable phase + gate (OPEN/HELD/complete) unambiguously —
+    # see the barrier-label block above. This is the single go/no-go signal a child repo
+    # reads: "<phase> (OPEN)" means that repo may start <phase> now.
     local bf; bf="$(mktemp)"
     {
-      printf '**Epic Phase**: %s\n\n' "$barrier_phase"
+      printf '**Epic Phase**: %s\n\n' "$BARRIER_LONG"
       printf '| Repo | Work Item | Phase | Status |\n'
       printf '|------|-----------|-------|--------|\n'
       for ((j=0;j<n;j++)); do

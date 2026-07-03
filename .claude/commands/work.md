@@ -329,6 +329,22 @@ Honor these rules in EVERY phase (requirements, planning, implementation), not j
    `**Epic Phase Done**` line in your manifest is **rendered** from your last `phase_done` event — never
    hand-edit it, and never hand-edit the epic's Tracked-Repos cells (those are folded by
    `scripts/epic-board.sh`).
+5. **The VALIDATION phase is TWO-LAYER (epic-bound only).** A single repo cannot prove a cross-repo
+   feature — the epic's real acceptance is an end-to-end run of its **Success Criteria** across live
+   pods, which only the epic owner (**solution**) can drive. So validation splits by who you are:
+   - **You are a child repo** (orchestrator, runtime, ps-ui, …): (a) run your **local** suite
+     (unit/integration — the part only you can verify); (b) **declare your e2e needs to solution** —
+     write `relays/outbound/to-solution--{this-repo}-e2e-needs.md` (`kind=blocks`, `phase=validation`)
+     stating which epic Success Criteria your strand must exercise, the **seams/fixtures/env** you
+     expose (e.g. *"seed a repo lacking branch X to hit tier-2 create; assert push"*), and your local
+     test status; log it (`relay_sent … slug={this-repo}-e2e-needs`). Do **NOT** author or run the
+     cross-repo e2e yourself. Then settle: `phase_done phase=validation`.
+   - **You are solution** (the epic owner's validation work item): you are the **e2e gate**. Collect
+     every `from-*-e2e-needs` relay, author the cross-repo e2e from the epic's **Success Criteria +
+     the collected needs**, stand up the stack, and **drive all the tests**. Resolve each repo's
+     e2e-needs relay (`relay_resolved direction=inbound`) as its scenario is covered **and passing**.
+     Settle `phase_done phase=validation` **only** when the full e2e is GREEN — that GO is the epic's
+     completion (and the commit) gate.
 
 **If no epic context exists** (standalone work item), proceed normally — the barrier + conductor apply
 only to epic-bound work. (Backward compatible.)
