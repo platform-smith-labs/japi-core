@@ -54,6 +54,33 @@ resolves the root via **Monorepo Root Resolution** (below). Child repos can also
 >   from the child's last `phase_done` event); the epic manifest carries a **generated**
 >   `**Epic Phase**: <phase>` line. The barrier is **derived** by `scripts/epic-board.sh` from these,
 >   never hand-recomputed or hand-edited.
+> - **The barrier signal is the `**Epic Phase**` line, and it is UNAMBIGUOUS by construction.** It
+>   names the **workable phase + gate**, not a bare phase word:
+>   `**Epic Phase**: implementation — OPEN (…every repo may run implementation now)` /
+>   `**Epic Phase**: planning — HELD (N open relay(s)…)` / `**Epic Phase**: complete`. **`<phase>
+>   (OPEN)` is the go signal** — every tracked repo may start `<phase>` now. `(HELD)` means nobody
+>   starts it yet. (A bare floor word like "planning" used to read as "we're *in* planning, don't
+>   implement" even when the next phase was open — that ambiguity is gone.)
+> - **Child repos READ the barrier; they NEVER recompute it.** A child decides "may I start phase P?"
+>   from exactly two derived signals: (a) the epic manifest's `**Epic Phase**: P (OPEN)` line, and
+>   (b) the presence of *its own* `/…` command for phase P in the board's **`run in each repo`**
+>   block. A child must **not** tally relays or phase-dones itself — per-repo counting reproduces the
+>   pre-A1 miscount (a source can't see the target's resolution) and makes repos disagree. When a
+>   plan says "don't build ahead of the barrier," the barrier it means is `**Epic Phase**: <that
+>   phase> (OPEN)`.
+> - **VALIDATION is TWO-LAYER — the epic owner (`solution`) drives the cross-repo e2e.** A single repo
+>   cannot prove a cross-repo feature; the epic's real acceptance is an end-to-end run of its
+>   **Success Criteria** across live pods, which only `solution` can see. So at the validation phase:
+>   (1) **each child repo** runs its **local** suite (unit/integration) and **declares its e2e needs**
+>   to solution via a `to-solution--{repo}-e2e-needs` relay (`kind=blocks`, `phase=validation`) —
+>   which Success Criteria its strand must exercise + the seams/fixtures/env it exposes — then settles
+>   its local validation; it does **not** author or run the cross-repo e2e. (2) **`solution`** owns a
+>   validation work item, collects those relays, authors the e2e from the epic's **Success Criteria +
+>   collected needs**, drives all tests on a live stack, resolves each repo's e2e-needs relay as it's
+>   covered+passing, and settles validation **only** when the full e2e is GREEN. Solution is the final
+>   gate — the epic reaches `complete` on solution's e2e GO. The board's `run in each repo` block
+>   emits the correct per-role command automatically (children: relay e2e-needs; solution: drive the
+>   e2e). Full rules in `/work` (epic-aware Rule 5) + the barrier decision doc.
 > - **`scripts/epic-board.sh <epic-id>`** is the read-only conductor view (`/epic board`/`/epic status`
 >   run it + interpret); **`scripts/epic-board.sh --write <epic-id>`** refreshes the epic manifest's
 >   derived board region in place (`/epic sync` runs it).
@@ -239,8 +266,13 @@ The **conductor view — one command that refreshes, then tells you the next act
    add a one-line interpretation. The script **derives** everything from child `work.jsonl` logs —
    each child manifest's generated `**Epic Phase Done**` field + each child's open relays — and
    computes the barrier phase, each repo's state (🟢 ACT / ⏳ BLOCKED / 🔵 WORKING / ✅ at-barrier),
-   and a single **DO THIS NEXT** (the bottleneck repo with inbound asks, or the phase command to run
-   in the lagging repos). **Do not hand-recompute the barrier or hand-edit the Tracked Repos cells.**
+   a single **DO THIS NEXT**, and — **always** — a **`run in each repo`** block: for every repo with
+   in-repo work (🟢 ACT or 🔵 WORKING) the exact copy-pasteable command (which dir to open a Claude
+   session in + the slash command with the **real work id**), plus, for ACT repos, the exact
+   `relay_resolved` close command. Present this block verbatim — it is the actionable per-repo
+   checklist the human runs. **Do not hand-recompute the barrier, hand-edit the Tracked Repos cells,
+   or hand-write these per-repo commands** — they are derived by the script from the child work ids +
+   open relays, so they stay correct as state changes.
 
 For a **read-only glance or a passive monitor** (no sync, no mutation), run
 `scripts/epic-board.sh epic-NNNN [--watch]` directly — e.g. leave `--watch` open in a tab.
@@ -293,16 +325,30 @@ For each tracked repo:
      - Record delivery on the **source's** log: `scripts/wlog.sh "$SOURCE_WD" relay_synced slug={slug}`
        (the source file **stays put**; `relay_synced` only marks it delivered — it does **not** close
        the relay), then `scripts/wrender.sh "$SOURCE_WD"`.
+     - **A2 — auto-resolve informational replies at delivery.** If the relay's `kind` is `confirms`
+       or `fyi` (an **answer/acknowledgment**, not a request for work), it needs **no target action** —
+       so close it **now**, at delivery, instead of leaving it open for a manual round:
+       `scripts/wlog.sh "$TARGET_WD" relay_resolved direction=inbound slug={slug}` then
+       `scripts/wrender.sh "$TARGET_WD"`. Only `blocks` relays stay open awaiting the target's work.
+       This is what stops acknowledgment rounds from accumulating open legs forever. **Never answer a
+       `confirms`/`fyi` by sending another `confirms`/`fyi`** — that just opens a new leg; acknowledge
+       by resolving. (If a reply genuinely requires new work, it is a `blocks`, not a `confirms`.)
      - **Round-cap guard**: if this same ordered edge (`{source}→{target}`, by `relay_sent` events in
        the logs) has already appeared **3+ times in the current phase**, do NOT silently re-deliver —
        flag it: "⚠️ {source} ↔ {target} has exchanged 3 rounds this phase without settling — human
        decision needed," and list the open asks.
 
-2b. **Resolve answered relays**: when a repo has acted on an inbound relay (its ask is satisfied), the
-    child closes it with a `relay_resolved` event (`scripts/wlog.sh "$WD" relay_resolved
-    direction=inbound slug={slug}`) — **never a file move**. The relay file is immutable and stays in
-    `relays/inbound/`. Open relays (derived: `relay_sent`/`relay_received` minus `relay_resolved` by
-    `direction+slug`) are what hold the barrier; `epic-board.sh` reads them from the child logs.
+2b. **Resolve answered relays.** A relay is **one thing** shared by two repos, keyed by `slug`. When a
+    repo has acted on an inbound `blocks` relay (its ask is satisfied), the child closes it with a
+    single `relay_resolved` event (`scripts/wlog.sh "$WD" relay_resolved direction=inbound
+    slug={slug}`) — **never a file move**; the file is immutable and stays in `relays/inbound/`.
+    **A1 — one resolution closes BOTH legs.** That single `relay_resolved` (by slug) settles the
+    relay: the target's **inbound** leg AND the **source's outbound** leg both close. The source does
+    **not** emit its own `relay_resolved direction=outbound` — its outbound auto-closes when the
+    target resolves. (`epic-board.sh` derives this: a slug in the epic-global resolved set is dropped
+    from every repo's open-leg counts — see `relay_counts`/`epic_resolved_slugs`.) Open relays
+    (`relay_sent`/`relay_received` whose slug has **no** `relay_resolved` anywhere in the epic) are
+    what hold the barrier.
 
 #### Step 3: Refresh the derived board (do not hand-recompute)
 
