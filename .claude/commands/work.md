@@ -18,14 +18,21 @@
 ## Command Usage
 
 ```bash
-/work "Natural language prompt"       # Auto-create work + research + requirements
+/work "Natural language prompt"       # Auto-create STANDALONE work + research + requirements
+/work --parent-work <parent-id> --parent-project <repo> "prompt"
+                                      # Create a CHILD work item under a standalone parent
+                                      # (both -- flags present, or both absent)
 /work <id>                            # Resume (review-gated: prints the next command, hands back to you)
 /work <id> auto                       # Autonomous: EXECUTE one phase, append events, STOP (loop-friendly)
-/work --epic <id>                     # Promote existing work item to cross-repo epic
 /work show <id>                       # Show work item details
 /work list                            # List all work items
 /work update <id> --status X          # Update work status (appends status_changed)
 ```
+
+> **`/work --epic` is REMOVED.** Parenthood is implicit — a standalone item *becomes* a parent the
+> moment its first child is created (by `/conduct <parent> scaffold <repo> "…"` or by
+> `--parent-work` above). There is no promotion ceremony. Legacy epic-bound items are frozen on the
+> old model (see **Conductor-aware work** below).
 
 ## ID Format
 
@@ -73,29 +80,43 @@ Throughout this document, `<id>` is shorthand for the resolved directory name an
 
 ## Hierarchy & optional parents
 
-The workflow has three nesting tiers, **each parent optional**:
+The workflow has three nesting tiers, **each parent optional** — and the middle tier is itself a
+work item (the epic *entity* is retired; see `/conduct` +
+`docs/dev/decisions/parent-child-work-items-and-conduct.md`):
 
 ```
-wishlist item   (a deferred idea; may spawn 0..N epics, one per milestone)   ← docs/wishlist/ (monorepo root)
-   └─ epic       (cross-repo coordination; may own 1..N work items)            ← docs/epics/ (monorepo root)
-        └─ work  (single-repo execution)                                       ← {repo}/docs/work/
+wishlist item     (a deferred idea; may spawn 0..N parents, one per milestone)  ← docs/wishlist/ (monorepo root)
+   └─ PARENT work (standalone; cross-repo conductor seat; owns the board)       ← docs/work/ (usually solution)
+        └─ CHILD work (single-repo execution; declares parent= at creation)     ← {repo}/docs/work/
 ```
 
-- A **work item** may be **standalone** (`/work "prompt"` — no epic), **epic-owned** (created by
-  `/epic`), or wishlist-derived (via its epic). Parent epic is **optional**.
-- An **epic** may be **standalone** (no wishlist) or **wishlist-derived**. Parent wishlist is **optional**.
-- A **wishlist item** may map to **0..N epics** over time (incremental, one per milestone).
+- A **work item** is **standalone** (`/work "prompt"`) or a **child**
+  (`--parent-work <parent-id> --parent-project <repo>` — both flags or neither). **Only a
+  standalone item can have children** (the 2-level file profile of the N-level L0 contract); the
+  tooling rejects a child-of-a-child.
+- A standalone item **becomes a parent implicitly** when its first child is created. The parent's
+  children board is derived by `scripts/conduct-board.sh` from the children's `parent=`
+  declarations — never hand-maintained.
+- A **wishlist item** may map to **0..N parents** over time (one per milestone — sequenced sibling
+  parents, driven by `/conduct <parent> next`).
+- **Legacy**: items with an `epic=` link (and everything under `docs/epics/`) stay on the frozen
+  `/epic` model — never migrate them.
 
-**Linkage fields** are carried as event metadata (the `created`/`meta_changed` `epic=` and `wishlist=`
-keys), and rendered into the manifest header by `wrender.sh` — never hand-edited:
-- work manifest header: `**Epic**` and/or `**Wishlist**` lines (present only when set on the log)
-- epic brief: its own `**Wishlist**` line
+**Linkage fields** are carried as event metadata (the `created`/`meta_changed` `parent=`,
+`parent_project=`, `epic=` (legacy) and `wishlist=` keys), rendered into the manifest header by
+`wrender.sh` — never hand-edited:
+- work manifest header: `**Parent**` (child items), `**Epic**` (legacy), `**Wishlist**` lines
 
 **Upward status sync is derived, not pushed.** Each work item's state lives in its own `work.jsonl`;
-the epic rollup is **folded from child logs** by `scripts/epic-board.sh` (read-only) — a child's last
-`phase_done` is read off its generated manifest. There is **no** `/work --sync` write-back into epic
-or wishlist tables. Run `scripts/epic-board.sh` (or `/epic`) at the monorepo root to see the rolled-up
-view. See **Epic-aware work** below.
+the parent rollup is **folded from child logs** by `scripts/conduct-board.sh` (read-only; legacy
+epics: `scripts/epic-board.sh`). There is **no** write-back into parent or wishlist tables. Run
+`scripts/conduct-board.sh <parent-id>` (or `/conduct`) at the monorepo root for the rolled-up view.
+
+**Two logs per child, one writer each** (writer partition — see the decision doc): you (the
+worker/child side) append **only to `work.jsonl`** via `scripts/wlog.sh`. The sibling file
+**`relays.jsonl` is the conductor's delivery log** (`relay_received`/`relay_synced`, written via
+`scripts/rlog.sh` by `/conduct sync` only) — **never write to it**. `wrender.sh` folds both into
+your manifest's Open Relays / Upstream Messages. See **Conductor-aware work** below.
 
 ## Behavior
 
@@ -138,10 +159,15 @@ You MUST execute this **3-phase automatic workflow**:
      ```bash
      scripts/wlog.sh "$WD" created title="<Generated Title>" slug="$SLUG" kind=work \
        repo=<this-repo> owner=<owner-email> request="<the user's verbatim prompt>" \
-       [epic=<epic-id>] [wishlist=<n>] [priority=<P>] [effort=<S|M|L>]
+       [parent=<parent-work-id> parent_project=<parent-repo>] [wishlist=<n>] \
+       [priority=<P>] [effort=<S|M|L>]
      scripts/wrender.sh "$WD"
      ```
-     Omit `epic=`/`wishlist=` for a standalone item; include them only when the parent exists.
+     Omit `parent=`/`parent_project=` for a standalone item. Include **both** (never one) when the
+     user passed `--parent-work` + `--parent-project` — and first **validate the parent**: resolve
+     it (glob across `docs/work/` and `repos/*/docs/work/`), confirm it exists and is **standalone**
+     (its log has no `parent=` key). Error otherwise: only standalone items can parent (2-level
+     profile). `epic=` is legacy-only — never set it on new items.
    - **Always pass `request=`** with the user's original prompt verbatim — `wrender.sh` surfaces it as
      the `## Original Request` section (load-bearing context for git-resume). `wlog.sh` JSON-encodes it
      safely, so quotes/newlines in the prompt are fine. Do **not** hand-write a manifest — `wrender.sh`
@@ -281,11 +307,21 @@ After both research and requirements are complete:
    - **✅ Completed** → "This work item is already completed."
    - **🔴 Blocked** → Display blockers (from the latest `status_changed to=blocked` note), suggest resolution.
 
-**Epic-aware work (barrier-synchronized conductor model)**:
-When the work item has an `**Epic**` link, this repo is one strand of a **barrier-synchronized** epic.
+**Conductor-aware work (barrier-synchronized conductor model — parent-bound or legacy epic-bound)**:
+When the work item has a `**Parent**` link (new model) or an `**Epic**` link (legacy, frozen), this
+repo is one strand of a **barrier-synchronized** run. The rules below apply identically to both;
+the translation table:
+
+| | Parent-bound (new) | Epic-bound (legacy) |
+|---|---|---|
+| Conductor | `/conduct <parent-id>` at the monorepo root | `/epic` at the monorepo root |
+| Barrier signal you READ | parent manifest's `**Barrier Phase**: <phase> (OPEN\|HELD)` | epic manifest's `**Epic Phase**` |
+| Delivery events (`relay_received`/`relay_synced`) | conductor-owned **`relays.jsonl`** (via `rlog.sh`) — **you never write it** | conductor writes them into `work.jsonl` |
+| Your events (everything else, incl. `relay_sent`/`relay_resolved`/`escalated`) | your `work.jsonl` via `wlog.sh` | same |
+
 Honor these rules in EVERY phase (requirements, planning, implementation), not just research. Relay
-**messages** are immutable files under direction-named folders; relay **lifecycle** is events in
-`work.jsonl`. Resolution is an **event, never a file move/delete**.
+**messages** are immutable files under direction-named folders; relay **lifecycle** is events.
+Resolution is an **event, never a file move/delete**.
 
 1. **Read inbound first.** Read all `epic/` files + every **open inbound** relay file
    (`relays/inbound/from-*.md`) whose `relay_received` has no matching `relay_resolved`.
@@ -323,12 +359,23 @@ Honor these rules in EVERY phase (requirements, planning, implementation), not j
    scripts/wlog.sh "$WD" phase_done phase=<requirements|planning|implementation|validation> note="<what settled>"
    scripts/wrender.sh "$WD"
    ```
-   Then tell the user: *"{this-repo} has settled {phase}. Run `scripts/epic-board.sh` (or `/epic`) at
-   the monorepo root — the conductor folds the child logs and advances the epic when all repos settle."*
-   The global barrier means no repo proceeds to the next phase until every repo settles this one. The
-   `**Epic Phase Done**` line in your manifest is **rendered** from your last `phase_done` event — never
-   hand-edit it, and never hand-edit the epic's Tracked-Repos cells (those are folded by
-   `scripts/epic-board.sh`).
+   Then tell the user: *"{this-repo} has settled {phase}. Run `scripts/conduct-board.sh <parent-id>`
+   (or `/conduct <parent-id> board`; legacy epics: `scripts/epic-board.sh` / `/epic`) at the monorepo
+   root — the conductor folds the child logs and advances when all repos settle."* The global barrier
+   means no repo proceeds until every repo settles this phase. The `**Epic Phase Done**` line in your
+   manifest is **rendered** from your last `phase_done` event — never hand-edit it, and never
+   hand-edit the parent's board cells (folded by `scripts/conduct-board.sh`).
+4b. **Escalate instead of spinning.** If you exhaust bounded attempts on the same failure (same
+   signature ~3×), or genuinely need a human decision, do NOT loop and do NOT just go blocked —
+   append the terminal-until-human signal and STOP:
+   ```bash
+   scripts/wlog.sh "$WD" escalated note="<what failed, the repeated signature, what decision is needed>"
+   scripts/wrender.sh "$WD"
+   ```
+   🚨 Escalated ≠ 🔴 Blocked: *Blocked* = waiting on something expected to resolve (an open relay, a
+   dependency) — the conductor keeps you in play. *Escalated* = out of play until a human decides —
+   the board excludes you from the barrier, emits no run-command for you, and the run cannot
+   complete until a human resumes you (`status_changed to=<phase status>`) or cancels.
 5. **The VALIDATION phase is TWO-LAYER (epic-bound only).** A single repo cannot prove a cross-repo
    feature — the epic's real acceptance is an end-to-end run of its **Success Criteria** across live
    pods, which only the epic owner (**solution**) can drive. So validation splits by who you are:
@@ -379,9 +426,12 @@ gate; the recording model is identical.
 #### Algorithm
 
 1. **Read state.** Resolve `<id>` → `$WD` and read `$WD/manifest.md` (the generated view; fold detail
-   from `$WD/work.jsonl` if needed). Note `Status`, `**Epic**`, `**Epic Phase Done**`. If `**Epic**:
-   <epic-id>` is present, also read the epic manifest's generated `**Epic Phase**` field (resolve the
-   epic dir via the monorepo root, same as `/epic`). Read `epic/context.md` if present.
+   from `$WD/work.jsonl` if needed). Note `Status`, `**Parent**`/`**Epic**`, `**Epic Phase Done**`.
+   If `**Parent**: <parent-id> @ <repo>` is present, read the parent manifest's generated
+   `**Barrier Phase**` field (resolve the parent dir via the monorepo root, same as `/conduct`);
+   legacy `**Epic**` items read the epic manifest's `**Epic Phase**` instead. Read `epic/context.md`
+   if present. If `Status` is 🚨 Escalated: output one line ("escalated — awaiting human decision:
+   <note>") and **STOP** (no event) — only a human `status_changed` resumes an escalated item.
 
 2. **Open inbound relays are the highest-priority unit of work (epic-bound).** If the manifest's
    **Open Relays** lists any **open inbound** relay (a `relay_received` with no matching
@@ -390,12 +440,13 @@ gate; the recording model is identical.
    relays are this invocation's one phase-unit. Do not also advance a phase in the same run.
 
 3. **Pick the target phase (exactly one).**
-   - **Epic-bound:** compare phase ordinals `requirements(1) < planning(2) < implementation(3) <
-     validation(4)`.
-     - If `ord(Epic Phase Done) ≥ ord(Epic Phase)` → this repo is **at the barrier**. Output
+   - **Parent-bound / epic-bound:** compare phase ordinals `requirements(1) < planning(2) <
+     implementation(3) < validation(4)` against the barrier read in step 1 (`**Barrier Phase**` for
+     parent-bound, `**Epic Phase**` for legacy).
+     - If `ord(Epic Phase Done) ≥ ord(barrier phase)` → this repo is **at the barrier**. Output
        `✅ {repo} settled @ {Epic Phase Done}; waiting on conductor/other repos.` and **STOP** (no event
        appended).
-     - Else **target = the epic's `Epic Phase`** (the barrier phase). Never pick a phase beyond it.
+     - Else **target = the barrier phase**. Never pick a phase beyond it.
    - **Standalone:** target = the next pending phase implied by `Status` (see mapping below).
 
 4. **Execute the target phase — and only that phase — to completion.** Record via events, then STOP:
@@ -420,8 +471,9 @@ gate; the recording model is identical.
 #### How the two loops cooperate
 
 ```
-solution root (conductor loop):   /loop /epic board <epic-id>     # sync relays + recompute barrier
-each repo (worker loop):          /loop /work <id> auto           # execute current barrier phase, stop
+solution root (conductor loop):   /loop /conduct <parent-id> board   # sync relays + recompute barrier
+                                  (legacy epics: /loop /epic board <epic-id>)
+each repo (worker loop):          /loop /work <id> auto              # execute current barrier phase, stop
 ```
 
 The worker reads the epic's `**Epic Phase**` (barrier, generated by `epic-board.sh`) and acts only up
@@ -436,47 +488,35 @@ stops, so the item advances without manual relaying. The default `/work <id>` ke
 
 ---
 
-### When user runs: `/work --epic <id>`
+### When user runs: `/work --parent-work <parent-id> --parent-project <repo> "prompt"`
 
-**Promote an existing work item to a cross-repo epic.** Use this when you started with a normal `/work "prompt"` and later discover the feature needs changes in other repos.
+**Create a CHILD work item under a standalone parent.** Both `--` flags must be present, or both
+absent (absent = standalone item, the normal flow). This is the child-repo-side equivalent of
+`/conduct <parent> scaffold` — use whichever context you're in. (`/work --epic` is **removed**;
+under the parent/child model there is no promotion — a standalone item becomes a parent when its
+first child is created.)
 
-1. Resolve `<id>` → `$WD`. Read `$WD/manifest.md` → original request and current status; read
-   `$WD/work.jsonl` for the precise `created` metadata.
-2. If the item already carries an `**Epic**` link → "This work item is already linked to {epic-id}."
-3. Generate title from the Original Request (3-8 words).
-4. Mint the epic id `epic-<YYMMDDHHMM>-<slug>` (see **ID Format**) — **no scan, no counter**. Reuse the
-   work item's slug (the part after the timestamp in `<id>`) so the epic and its primary work item share
-   a slug for traceability:
+1. **Resolve + validate the parent** (before creating anything): resolve `<parent-id>` by glob
+   across `{root}/docs/work/` and `{root}/repos/*/docs/work/`; confirm its directory matches
+   `--parent-project` (via the Repo Aliases table); confirm it is **standalone** — its `work.jsonl`
+   carries no `parent=` key. If it's a child: error — *"only standalone items can parent children
+   (2-level profile)"*. If not found / ambiguous: error with matches.
+2. Mint the child id + scaffold exactly as the standalone Phase 1 flow, with the parent keys on the
+   `created` event:
    ```bash
-   SLUG="<work item slug>"
-   EPIC_ID="epic-$(date +%y%m%d%H%M)-$SLUG"
-   ```
-5. Determine this repo's name from the current directory (basename of pwd).
-6. Create the epic under `../docs/epics/$EPIC_ID/` per the `/epic` command (a thin authored brief is
-   fine; its Tracked-Repos/barrier state is **folded** by `scripts/epic-board.sh`, never hand-synced).
-7. Link the work item back to the epic by appending an event (not by editing the manifest):
-   ```bash
-   scripts/wlog.sh "$WD" meta_changed epic=$EPIC_ID note="promoted to cross-repo epic"
+   scripts/wlog.sh "$WD" created title="<title>" slug="$SLUG" kind=work repo=<this-repo> \
+     owner=<owner> request="<prompt>" parent=<parent-id> parent_project=<parent-repo-alias>
    scripts/wrender.sh "$WD"
    ```
-8. Create `$WD/epic/context.md` (authored prose) with the epic id, title, and cross-repo guidance
-   (same as the `/epic` command's context template), and ensure relay folders exist:
-   ```bash
-   mkdir -p "$WD"/epic "$WD"/relays/outbound "$WD"/relays/inbound
-   ```
-9. Output:
-   ```
-   Created {epic-id}: {Title}
-   Linked to {work-id} in {this-repo}
+3. No parent-side registration is needed — the parent's board **discovers** this child on its next
+   fold (`scripts/conduct-board.sh` scans for `parent=` declarations). Optionally proceed with the
+   automatic research+requirements phases as in the standalone flow, honoring the parent's barrier.
 
-   To relay findings to other repos, author relays/outbound/to-{repo}--{slug}.md and append a
-   relay_sent event; the target repo reads it and runs scripts/epic-board.sh / /epic to roll up.
-   ```
-
-> **Note**: There is no `/work --sync`. Cross-repo state is never pushed by a child — the epic rollup
-> is **derived** from child `work.jsonl` logs by `scripts/epic-board.sh` (read-only). Children write
-> relays + `phase_done` events and STOP; the conductor (`/epic` at the monorepo root) folds and
-> advances. Any upward wishlist reflection is likewise a read-only fold, never a hand-edited table.
+> **Note**: There is no `/work --sync`. Cross-repo state is never pushed by a child — the parent
+> rollup is **derived** from child logs by `scripts/conduct-board.sh` (read-only; legacy epics:
+> `scripts/epic-board.sh`). Children write relays + `phase_done` events and STOP; the conductor
+> (`/conduct` at the monorepo root) delivers + folds + advances. Any upward wishlist reflection is
+> likewise a read-only fold, never a hand-edited table.
 
 ---
 
@@ -531,15 +571,16 @@ The mapping from events to manifest:
 
 | Manifest field / section | Driven by event(s) |
 |---|---|
-| `**Status**` badge | last `status_changed to=…` (`wrender.sh` owns the emoji vocabulary) |
+| `**Status**` badge | last `status_changed to=…` — or 🚨 Escalated if a later `escalated` event exists (`wrender.sh` owns the emoji vocabulary) |
 | `**Created**` / `**Last Updated**` | `created` `ts` / latest event `ts` |
 | `**Owner**` / `**Priority**` / `**Estimated Effort**` | `created` + `meta_changed` |
-| `**Epic**` / `**Wishlist**` | `created`/`meta_changed` `epic=` / `wishlist=` |
+| `**Parent**` / `**Epic**` (legacy) / `**Wishlist**` | `created`/`meta_changed` `parent=`+`parent_project=` / `epic=` / `wishlist=` |
 | `**Epic Phase Done**` | last `phase_done` `phase=` |
+| Children board (parents only, between BOARD anchors) | written by `scripts/conduct-board.sh --write`; `wrender.sh` preserves it verbatim |
 | Workflow Progress checkboxes | `status_changed` + `phase_done` history |
 | Artifacts | `artifact_added` events |
-| Open Relays / Upstream Messages | `relay_sent`/`relay_received`/`relay_synced`/`relay_resolved` |
-| Change Log | every event, in `seq` order, with its `note` |
+| Open Relays / Upstream Messages | `relay_sent`/`relay_resolved` (your `work.jsonl`) **+** `relay_received`/`relay_synced` (conductor's `relays.jsonl`) — folded together |
+| Change Log | every `work.jsonl` event, in `seq` order, with its `note` (relays.jsonl has its own seq space and is not in the Change Log) |
 
 > **Never** hand-edit any of the above. To change state, append the matching `wlog.sh` event and run
 > `scripts/wrender.sh "$WD"`. The single place LLM narrative enters the log is the `note=`/`body=` field
@@ -557,7 +598,11 @@ authored exactly as before — only *state* is structured.
 - 🎨 **Planning**: Creating implementation plan
 - 🔄 **In Implementation**: Active development
 - ✅ **Completed**: Work finished and deployed
-- 🔴 **Blocked**: Waiting on dependencies
+- 🔴 **Blocked**: Waiting on dependencies **expected to resolve** (open relay, upstream work) — the
+  conductor keeps the item in play
+- 🚨 **Escalated**: Bounded attempts exhausted / human decision required — **out of play until a
+  human acts** (rendered from an `escalated` event; resume with a later `status_changed`). The
+  conductor excludes it from the barrier and the run cannot complete while any child is escalated
 - ⏸️ **On Hold**: Paused for later
 - ❌ **Cancelled**: Will not be implemented
 
@@ -571,8 +616,10 @@ flows into the manifest via `wrender.sh`, and into the index via `windex.sh`.
 
 ## Tools Available
 
-- **Bash**: Run `scripts/wlog.sh` (append events), `scripts/wrender.sh` (regenerate manifest),
-  `scripts/epic-board.sh` (read-only epic rollup), and `date` (mint ids)
+- **Bash**: Run `scripts/wlog.sh` (append events — your ONLY writer; never touch `relays.jsonl`,
+  that's the conductor's via `scripts/rlog.sh`), `scripts/wrender.sh` (regenerate manifest),
+  `scripts/conduct-board.sh` (read-only parent rollup; legacy: `scripts/epic-board.sh`), and
+  `date` (mint ids)
 - **Read**: Read generated manifests, `work.jsonl`, and prose artifacts
 - **Write**: Create prose artifact content (research/requirements/issues/plans/relay bodies/epic context)
 - **Edit**: Edit prose artifacts (NEVER `manifest.md` — that is generated)

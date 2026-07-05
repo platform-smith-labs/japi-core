@@ -275,7 +275,8 @@ The `planv0` command validates and ensures NO placeholders remain.
 
 All documents use sequential numbering within their scope:
 - **Work items**: `work-<YYMMDDHHMM>-<slug>` (e.g. `work-2607010322-dark-mode`) — a timestamped slug with **no sequential number** (no scan/counter → race-safe across pods). State is an **append-only event log** (`work.jsonl`, written via `scripts/wlog.sh`); `manifest.md` is **generated** by `scripts/wrender.sh` and must never be hand-edited. Legacy `work-NNNN…` items are preserved without migration. See [`../docs/dev/decisions/append-only-work-event-log.md`](../docs/dev/decisions/append-only-work-event-log.md) + the `/work` command.
-- **Epics**: `epic-<YYMMDDHHMM>-<slug>` (e.g. `epic-2606301200-uiux-revamp`) — timestamped slug, no sequential number. The Tracked-Repos board + Epic Phase barrier are **derived** from child work logs by `scripts/epic-board.sh` (membership auto-discovered from each child's `epic=` declaration) — never hand-synced. Legacy `epic-NNNN…` preserved. See the `/epic` command.
+- **Parent work items** (the epic role): ordinary `work-<YYMMDDHHMM>-<slug>` items. The children board + Barrier Phase are **derived** from child work logs by `scripts/conduct-board.sh` at the monorepo root (membership auto-discovered from each child's `parent=` declaration; delivery state in the conductor-owned `relays.jsonl`, written only by `scripts/rlog.sh`) — never hand-synced. Only standalone items can parent (2-level). See the `/conduct` command.
+- **Epics (LEGACY, frozen)**: `epic-<YYMMDDHHMM>-<slug>` under the monorepo root's `docs/epics/` — operated by `/epic` only; never migrate, never create new ones.
 - **Research**: `0001-topic-research.md`, `0002-topic-research.md` (per work item or global)
 - **Requirements**: `0001-feature-req.md`, `0002-feature-req.md` (per work item or global)
 - **Issues**: `0001-bug-issue.md`, `0002-task-issue.md` (per work item or global)
@@ -291,7 +292,8 @@ When invoking commands like `/research --work work-<id>`, you may pass the short
 - 🎨 **Planning** - Creating implementation plan
 - 🔄 **In Implementation** - Active development
 - ✅ **Completed** - Work finished and deployed
-- 🔴 **Blocked** - Waiting on dependencies
+- 🔴 **Blocked** - Waiting on dependencies expected to resolve (kept in play)
+- 🚨 **Escalated** - Bounded attempts exhausted / human decision required — out of play until a human acts (from an `escalated` event)
 - ⏸️ **On Hold** - Paused for later
 - ❌ **Cancelled** - Will not be implemented
 

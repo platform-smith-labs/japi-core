@@ -169,22 +169,22 @@ All commands support standalone usage without work items:
 /planv0 "Implement dark mode"                   # → docs/plans/
 ```
 
-## Workflow Hierarchy (wishlist → epic → work)
+## Workflow Hierarchy (wishlist → parent work → child work)
 
-Development is organized in three **optional-nesting** tiers (commands in `.claude/commands/`, plus the `wishlist` skill):
+Development is organized in three **optional-nesting** tiers (commands in `.claude/commands/`, plus the `wishlist` skill). The epic entity is retired — a **standalone parent work item + `/conduct`** plays that role (legacy epics under the monorepo root's `docs/epics/` stay on `/epic`, frozen; never migrate them). See `docs/dev/decisions/parent-child-work-items-and-conduct.md` at the monorepo root.
 
-- **wishlist item** — a deferred, cross-cutting idea, at the **monorepo root** under `docs/wishlist/NNNN_slug/`. Picked up into 0..N epics over time (one per milestone). Capture new ones with the `wishlist` skill.
-- **epic** — cross-repo coordination, at the monorepo root under `docs/epics/epic-<id>/`. **Optional** — an epic can exist without a wishlist item.
-- **work item** — this repo's execution unit, at `docs/work/work-<id>/`. **Optional parent** — a work item can be **standalone** (`/work "…"`), epic-owned, or wishlist-derived through its epic.
+- **wishlist item** — a deferred, cross-cutting idea, at the **monorepo root** under `docs/wishlist/NNNN_slug/`. Picked up into 0..N parent work items over time (one sibling parent per milestone). Capture new ones with the `wishlist` skill.
+- **parent work item** — cross-repo coordination seat: an ordinary **standalone** work item (usually at the monorepo root's `docs/work/`). **Optional** — becomes a parent implicitly when its first child is created; only standalone items can parent (2-level).
+- **work item** — this repo's execution unit, at `docs/work/work-<id>/`. Can be **standalone** (`/work "…"`) or a **child** declaring `parent=<work-id>` + `parent_project=<repo>` at creation.
 
 **Run from this repo:**
-- `/work "description"` — create a work item (auto research + requirements)
+- `/work "description"` — create a standalone work item (auto research + requirements)
+- `/work --parent-work <parent-id> --parent-project <repo> "description"` — create this repo's child strand under a parent (both flags, or neither)
 - `/work work-<id>` — resume; then `/planv0` → `/implement_plan` → `/commit` (and `/journal`, `/learn`)
-- `/work --epic work-<id>` — promote a work item to a cross-repo epic
-- `/work --sync epic-<id>` — **standalone/non-epic work only.** For epic-bound work this is removed: upward rollup is **derived** by `scripts/epic-board.sh` (child logs → epic board); child repos never push status up.
+- Parent-bound work: READ the parent manifest's `**Barrier Phase**` (never recompute it), settle each phase with `phase_done` + STOP, and `escalated` (🚨, out-of-play-until-human) instead of spinning. Your writer is `scripts/wlog.sh` → `work.jsonl` only; the sibling `relays.jsonl` is the conductor's delivery log (read-only for you). Upward rollup is **derived** by `scripts/conduct-board.sh` at the monorepo root; child repos never push status up.
 - `wishlist` skill — park a deferred cross-cutting idea
 
-**Run from the monorepo root** (the dir containing `docs/epics/` + `docs/wishlist/`): `/epic <repo> "…"` (create), `/epic sync`, `/epic status|show|list`, and **`/epic next-milestone [epic-<id> | wishlist NNNN]`** — after a wishlist-linked epic completes, scaffold the next milestone's epic with the back-link maintained. (These resolve the root automatically, so they also work from here, but conventionally run at the root.)
+**Run from the monorepo root**: `/conduct <parent-id> board|sync|scaffold|next` — the conductor (dashboard, push relay delivery, child scaffolding, milestone advance). `/epic …` is **legacy-only** for the frozen epics. (These resolve the root automatically, so they also work from here, but conventionally run at the root.)
 
 **This repo:** Shared Go API-framework library (no service port) — consumed by orchestrator + ps-api. Changes here ripple to both consumers, so a change is often the library strand of a cross-repo epic; bump/verify the consumers in lockstep.
 
@@ -303,7 +303,8 @@ The `planv0` command validates and ensures NO placeholders remain.
 
 All documents use sequential numbering within their scope:
 - **Work items**: `work-<YYMMDDHHMM>-<slug>` (e.g. `work-2607010322-dark-mode`) — a timestamped slug with **no sequential number** (no scan/counter → race-safe across pods). State is an **append-only event log** (`work.jsonl`, written via `scripts/wlog.sh`); `manifest.md` is **generated** by `scripts/wrender.sh` and must never be hand-edited. Legacy `work-NNNN…` items are preserved without migration. See [`docs/dev/decisions/append-only-work-event-log.md`](docs/dev/decisions/append-only-work-event-log.md) + the `/work` command.
-- **Epics**: `epic-<YYMMDDHHMM>-<slug>` (e.g. `epic-2606301200-uiux-revamp`) — timestamped slug, no sequential number. The Tracked-Repos board + Epic Phase barrier are **derived** from child work logs by `scripts/epic-board.sh` (membership auto-discovered from each child's `epic=` declaration) — never hand-synced. Legacy `epic-NNNN…` preserved. See the `/epic` command.
+- **Parent work items** (the epic role): ordinary `work-<YYMMDDHHMM>-<slug>` items. The children board + Barrier Phase are **derived** from child work logs by `scripts/conduct-board.sh` at the monorepo root (membership auto-discovered from each child's `parent=` declaration; delivery state in the conductor-owned `relays.jsonl`) — never hand-synced. See the `/conduct` command.
+- **Epics (LEGACY, frozen)**: `epic-<YYMMDDHHMM>-<slug>` under the monorepo root's `docs/epics/` — operated by `/epic` only; never migrate, never create new ones.
 - **Research**: `0001-topic-research.md`, `0002-topic-research.md` (per work item or global)
 - **Requirements**: `0001-feature-req.md`, `0002-feature-req.md` (per work item or global)
 - **Issues**: `0001-bug-issue.md`, `0002-task-issue.md` (per work item or global)

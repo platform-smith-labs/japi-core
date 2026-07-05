@@ -1,5 +1,15 @@
 # Cross-Repo Epic Command
 
+> ## ⚠️ RETIRED FOR NEW WORK — legacy epics only (2026-07-05)
+>
+> The epic entity is **removed** for new work: a **standalone parent work item + `/conduct`**
+> replaces it (see `.claude/commands/conduct.md` and
+> `docs/dev/decisions/parent-child-work-items-and-conduct.md`). Use this command **only** to operate
+> the frozen legacy epics under `docs/epics/` (freeze-don't-migrate: never convert a legacy epic or
+> its `epic=`-linked work items to the parent/child model). For anything new:
+> `/work "prompt"` (the parent) → `/conduct <parent-id> scaffold <repo> "…"` (children) →
+> `/conduct <parent-id> board|sync`.
+
 **Purpose**: Coordinate multi-repo features from the parent directory. Creates "epics" that track work items across child repos, with file-based relay for cross-repo communication.
 
 **This command operates on monorepo-root artifacts** (`docs/epics/`, `docs/wishlist/`). It is
