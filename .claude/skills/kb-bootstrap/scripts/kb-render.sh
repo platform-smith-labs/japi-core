@@ -45,6 +45,57 @@ while IFS= read -r d; do
   gen_dir_index "$d"
 done < <(find "$KB/self" -mindepth 1 -type d ! -path '*/extract*' ! -path '*/eval*' 2>/dev/null | LC_ALL=C sort)
 
+# Peer bundles = docs/kb/peers/<repo>/ folded in by kb-copy-peer.sh (kb-sync). Present only after a
+# sync/copy run; a repo that has only been bootstrapped has none, so this loop emits nothing and the
+# top-level index below carries no Peers section — byte-identical to the pre-peers output.
+PEERS="$KB/peers"
+peer_dirs=()
+if [ -d "$PEERS" ]; then
+  while IFS= read -r pd; do
+    # A real peer bundle has at least one concept file (directly or in a collection).
+    if ls "$pd"/*.md >/dev/null 2>&1 || find "$pd" -mindepth 2 -name '*.md' -print -quit 2>/dev/null | grep -q .; then
+      peer_dirs+=("$pd")
+    fi
+  done < <(find "$PEERS" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | LC_ALL=C sort)
+fi
+
+# Render each peer bundle's own index.md (top + collection sub-indexes) as a read-only mirror.
+render_peer_bundle() {
+  local pd="$1" pname psha pdate f n d b
+  pname="$(basename "$pd")"
+  psha=UNKNOWN; pdate=UNKNOWN
+  if [ -f "$pd/.provenance" ]; then
+    psha="$(sed -n 's/^source_sha=//p' "$pd/.provenance")"; [ -n "$psha" ] || psha=UNKNOWN
+    pdate="$(sed -n 's/^source_commit_date=//p' "$pd/.provenance")"; [ -n "$pdate" ] || pdate=UNKNOWN
+  fi
+  # Collection sub-indexes inside the peer bundle.
+  while IFS= read -r d; do
+    ls "$d"/*.md >/dev/null 2>&1 || continue
+    gen_dir_index "$d"
+  done < <(find "$pd" -mindepth 1 -type d 2>/dev/null | LC_ALL=C sort)
+  {
+    printf '# Peer KB — %s\n%s\n\n' "$pname" "$BANNER"
+    printf 'Folded from `%s` @ %s (%s). Read-only mirror of that repo'\''s self-brief — do not hand-edit; refresh via kb-sync.\n\n' "$pname" "$psha" "$pdate"
+    printf '## Self\n\n'
+    for n in overview context glossary; do
+      f="$pd/$n.md"; [ -f "$f" ] && printf -- '- [%s](./%s.md)\n' "$n" "$n"
+    done
+    while IFS= read -r f; do
+      n="$(basename "$f")"; n="${n%.md}"
+      case "$n" in overview|context|glossary) continue;; esac
+      printf -- '- [%s](./%s.md)\n' "$n" "$n"
+    done < <(find "$pd" -maxdepth 1 -type f -name '*.md' ! -name 'index.md' 2>/dev/null | LC_ALL=C sort)
+    printf '\n## Collections\n\n'
+    while IFS= read -r d; do
+      [ -f "$d/index.md" ] || continue
+      b="$(basename "$d")"; printf -- '- [%s](./%s/index.md)\n' "$b" "$b"
+    done < <(find "$pd" -mindepth 1 -type d 2>/dev/null | LC_ALL=C sort)
+  } > "$pd/index.md"
+}
+for pd in "${peer_dirs[@]:-}"; do
+  [ -n "$pd" ] && render_peer_bundle "$pd"
+done
+
 # Top-level KB index.
 repo="$(kb_fm_scalar "$KB/self/overview.md" repo 2>/dev/null || true)"; [ -z "$repo" ] && repo="$(basename "$(cd "$ROOT" && pwd)")"
 {
@@ -69,6 +120,16 @@ repo="$(kb_fm_scalar "$KB/self/overview.md" repo 2>/dev/null || true)"; [ -z "$r
     [ -f "$d/index.md" ] || continue
     b="$(basename "$d")"; printf -- '- [%s](./self/%s/index.md)\n' "$b" "$b"
   done < <(find "$KB/self" -mindepth 1 -type d ! -path '*/extract*' ! -path '*/eval*' 2>/dev/null | LC_ALL=C sort)
+  # Peers — folded sibling briefs (only after a kb-sync/copy run; omitted entirely otherwise).
+  if [ "${#peer_dirs[@]}" -gt 0 ] && [ -n "${peer_dirs[0]:-}" ]; then
+    printf '\n## Peers\n\n'
+    printf 'Folded briefs from sibling repos — read these before a cross-repo task instead of reading the peer'\''s source.\n\n'
+    for pd in "${peer_dirs[@]}"; do
+      b="$(basename "$pd")"; psha=UNKNOWN
+      [ -f "$pd/.provenance" ] && { psha="$(sed -n 's/^source_sha=//p' "$pd/.provenance")"; [ -n "$psha" ] || psha=UNKNOWN; }
+      printf -- '- [%s](./peers/%s/index.md) — `@%s`\n' "$b" "$b" "$psha"
+    done
+  fi
 } > "$KB/index.md"
 
 echo "kb-render: wrote $KB/index.md + collection indexes" >&2

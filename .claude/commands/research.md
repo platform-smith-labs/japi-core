@@ -4,11 +4,20 @@ Conduct thorough research and create research documents for analysis, investigat
 
 > **Work-item state is an append-only event log** — register artifacts with `scripts/wlog.sh "$WD" artifact_added ...` then `scripts/wrender.sh "$WD"`; never hand-edit `manifest.md`. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
 
+## 🚧 Repo isolation — no cross-repo reads or edits (MANDATORY)
+
+This skill runs inside a **single repo** that in the PlatformSmith product has **no filesystem access to sibling repos**. Enforce it here and in every sub-agent this skill spawns:
+
+- **Never** `Read`/`Grep`/`Glob`/`Edit` any file **outside this repo** (another repo's working tree). Your world is **this repo only** — scope every research sub-agent (codebase-locator/analyzer/pattern-finder) to this repo too.
+- **Cross-repo knowledge** comes *only* from the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`) — the sole cross-repo research surface. Reading your own `docs/kb/peers/**` is allowed.
+- If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
+- **Cross-repo edits are never allowed.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
+
 ## Resolving `--work` IDs
 
 When the user passes `--work <id>` (e.g., `--work work-0027` or `--work work-2607010322-dark-mode`), the value is a **short reference**, never an index to compute. The directory may be the legacy short form (`work-NNNN`), the legacy slug form (`work-NNNN-MMDDHHMM-slug`), or the event-log form (`work-<YYMMDDHHMM>-<slug>`). Before any file read/write, **resolve the reference to the real directory by glob — never by arithmetic**:
 
-1. **Try exact match** — Glob `docs/work/{arg}/` (or `repos/<repo>/docs/work/{arg}/`). If found, use it as the work item directory.
+1. **Try exact match** — Glob `docs/work/{arg}/`. If found, use it as the work item directory.
 2. **Else glob with dash suffix** — Glob `docs/work/{arg}-*/` (matches the slug-suffixed forms).
 3. **Else glob by slug fragment** — Glob `docs/work/*{arg}*/` for a bare slug reference.
 4. **If exactly one match**, use that directory throughout the command. If zero, error: "Work item {arg} not found in docs/work/." If multiple, error and list the matches.

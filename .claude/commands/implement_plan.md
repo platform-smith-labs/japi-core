@@ -2,6 +2,15 @@
 
 You are tasked with implementing an approved technical plan. These plans contain phases with specific changes and success criteria.
 
+## 🚧 Repo isolation — no cross-repo reads or edits (MANDATORY)
+
+You implement inside **one repo**, which in the PlatformSmith product runs in its own container with **no filesystem access to sibling repos**. Enforce that here and in every domain specialist / code-reviewer sub-agent this command spawns:
+
+- **Never** `Read`/`Grep`/`Glob`/`Edit` any file **outside this repo** (another repo's working tree). All edits land in **this repo only**. If a phase seems to need a change in another repo, **stop** — that is a separate work item / relay to that repo, never a direct edit.
+- **Cross-repo knowledge** comes *only* from the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`) — the sole cross-repo research surface. Reading your own `docs/kb/peers/**` is allowed.
+- If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
+- If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
+
 > **Work-item state is an append-only event log.** Never hand-edit `manifest.md` — it is generated. Record work-item state by appending events with `scripts/wlog.sh "$WD" …` and regenerating the manifest with `scripts/wrender.sh "$WD"`. Plan checkboxes (`plans/phase-N.md`, `plans/master.md`) remain plan content and stay the authoring surface for plan progress. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
 >
 > Throughout this command, `"$WD"` is the work item directory extracted from the plan path (e.g. `docs/work/work-NNNN-MMDDHHMM-slug/`).

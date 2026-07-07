@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **Claude Code Workflow Template** providing structured commands, agents, and workflows for software development. Copy `.claude/` to your projects to enable intelligent development workflows.
 
+## 🚧 Repo isolation — cross-repo boundary (MANDATORY)
+
+Every repo runs **in isolation**: in the PlatformSmith product each repo lives in its own container with **no filesystem access to any sibling repo**. Work as if that is true now.
+
+- **Never** `Read`/`Grep`/`Glob`/`Edit` another repo's working tree. Your filesystem universe is **this repo only**.
+- **Cross-repo knowledge** comes solely from the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`). `docs/kb/peers/**` is your own copy — reading it is allowed and is the *only* cross-repo research surface.
+- **Relay, don't reach**: if the KB is unclear on a **system-critical** fact, is a gap / marked `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** to that repo (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
+- **Cross-repo edits are never allowed.** If a cross-repo read seems truly unavoidable, **stop and ask the human** for explicit approval — the need is a KB gap to record.
+
+See [`docs/dev/decisions/repo-isolation-kb-first-cross-repo.md`](../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
+
 ## 🤖 Proactive Workflow Recommendations
 
 **IMPORTANT**: When a user makes requests, proactively recommend and use the appropriate workflow. Don't wait to be asked.

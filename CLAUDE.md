@@ -13,8 +13,15 @@ This repository is part of the **Platform Smith** project. For cross-repository 
 
 **japi-core** is a type-safe Go framework/library for building REST APIs with PostgreSQL. It is consumed by other Go services via `go get github.com/platform-smith-labs/japi-core/v3`.
 
-> **Knowledge base**: `docs/kb/` summarizes this repo's capabilities for peer repos. Before a
-> cross-repo task, read `docs/kb/index.md` → `self/capabilities/`. Regenerate with `/kb-bootstrap`.
+> **Knowledge base & repo isolation**: This repo runs **in isolation** — in the PlatformSmith
+> product it lives in its own container with **no filesystem access to any sibling repo**. Only
+> read/edit files **inside this repo**. `docs/kb/self/` is this repo's brief for peers; **anything
+> about another repo** comes from the local **folded KB** at `docs/kb/peers/<repo>/` (start at
+> `docs/kb/index.md`) — never by reading that repo's tree. If the KB is unclear on a
+> **system-critical** fact, a gap/`UNKNOWN`, or contradicted by behavior, send an A2A **relay**
+> (the live ask-a-peer A2A channel — not a local script) — not for routine confirmation. Never read or edit a sibling repo; if a
+> cross-repo read seems unavoidable, **stop and ask a human**. Regenerate with `/kb-bootstrap`. See
+> [`docs/dev/decisions/repo-isolation-kb-first-cross-repo.md`](docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
 
 The `.claude/` directory in this repo is a reusable Claude Code workflow template. Copy `.claude/` to other projects to enable intelligent development workflows.
 

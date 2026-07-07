@@ -2,6 +2,15 @@
 
 **Purpose**: Create and manage unified work items that group related research, requirements, plans, and implementation artifacts.
 
+## 🚧 Repo isolation — no cross-repo reads or edits (MANDATORY)
+
+A work item belongs to **one repo**, which in the PlatformSmith product runs in its own container with **no filesystem access to sibling repos**. Enforce that in this command and every sub-agent it spawns:
+
+- **Never** `Read`/`Grep`/`Glob`/`Edit` any file **outside this repo** (another repo's working tree). The work item's world is **this repo only**.
+- **Cross-repo knowledge** comes *only* from the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`) — the sole cross-repo research surface. Reading your own `docs/kb/peers/**` is allowed.
+- If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation. Cross-repo requests to *change* something also go via relay — never by editing the other repo.
+- **Cross-repo edits are never allowed.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
+
 > ## 🧾 State is an append-only event log
 >
 > **Never hand-edit `manifest.md`.** It is GENERATED from `<WD>/work.jsonl` by `scripts/wrender.sh`.
@@ -168,7 +177,8 @@ You MUST execute this **3-phase automatic workflow**:
      ```
      Omit `parent=`/`parent_project=` for a standalone item. Include **both** (never one) when the
      user passed `--parent-work` + `--parent-project` — and first **validate the parent's ancestry
-     chain**: resolve it (glob across `docs/work/` and `repos/*/docs/work/`), then walk its
+     chain**: resolve it (glob under `docs/work/`; a parent that lives in **another repo** is resolved
+     by the conductor via A2A/DB, never by reading a sibling repo's tree), then walk its
      `parent=` links upward — the chain must terminate at a standalone root, with no cycles and
      without the item being created (N-level nesting is allowed; the parent may itself be a
      child). Error on any violation. `epic=` is legacy-only — never set it on new items.
@@ -179,8 +189,8 @@ You MUST execute this **3-phase automatic workflow**:
 
 4. **Registry is generated — do not hand-maintain an index**
    - There is **no** `docs/work/index.md` row to edit. Regenerate the roll-up with
-     `scripts/windex.sh docs/work` (or the repo's work root, e.g. `scripts/windex.sh repos/<repo>/docs/work`) —
-     it folds every item's generated `manifest.md` into `index.md`. Never hand-edit `index.md`.
+     `scripts/windex.sh docs/work` — it folds every item's generated `manifest.md` into `index.md`.
+     Never hand-edit `index.md`.
 
 5. **Notify User**
    - Output: "✅ Created $WORK_ID: {Generated Title}"
@@ -501,8 +511,8 @@ under the parent/child model there is no promotion — a standalone item becomes
 first child is created.)
 
 1. **Resolve + validate the parent** (before creating anything): resolve `<parent-id>` by glob
-   across `{root}/docs/work/` and `{root}/repos/*/docs/work/`; confirm its directory matches
-   `--parent-project` (via the Repo Aliases table); then **validate the ancestry chain**: walk the
+   under `docs/work/` — a parent that lives in **another repo** is resolved by the conductor via
+   A2A/DB, never by reading a sibling repo's tree; then **validate the ancestry chain**: walk the
    parent's own `parent=` links upward — the chain must terminate at a **standalone root**, must
    not revisit any node (**no cycles**), and must not include the item being created. Error on any
    violation. If not found / ambiguous: error with matches. (N-level nesting is allowed — the
@@ -621,7 +631,7 @@ authored exactly as before — only *state* is structured.
 ## Work Registry — generated, not hand-maintained
 
 `docs/work/index.md` is **generated**, never hand-edited. Regenerate it with `scripts/windex.sh docs/work`
-(or `scripts/windex.sh repos/<repo>/docs/work` for a child repo) — it folds every item's generated
+— it folds every item's generated
 `manifest.md` into a roll-up table (id, title, status, epic, Epic Phase Done, updated), sorted by Last
 Updated. There are **no** rows to move on a status change — status lives in each item's `work.jsonl`,
 flows into the manifest via `wrender.sh`, and into the index via `windex.sh`.

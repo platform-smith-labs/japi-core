@@ -2,6 +2,15 @@
 
 You are tasked with creating implementation plans. You can adapt from quick planning for simple tickets to comprehensive interactive planning for complex features. Be skeptical, thorough, and work collaboratively with the user to produce high-quality technical specifications.
 
+## 🚧 Repo isolation — no cross-repo reads or edits (MANDATORY)
+
+This plan is for **one repo**, which in the PlatformSmith product runs in its own container with **no filesystem access to sibling repos**. Enforce that here and in every sub-agent (architect-reviewer, domain specialists) this command spawns:
+
+- **Never** `Read`/`Grep`/`Glob`/`Edit` any file **outside this repo** (another repo's working tree). Your world is **this repo only**. A plan may **depend on** a peer but must not modify it — cross-repo needs become a relay or a separate work item in that repo.
+- **Cross-repo knowledge** comes *only* from the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`) — the sole cross-repo research surface. Reading your own `docs/kb/peers/**` is allowed.
+- If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
+- **Cross-repo edits are never allowed.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
+
 > ## ⚠️ Work-item state is an append-only event log
 >
 > **Never hand-edit `manifest.md`.** A work item's state lives in `<WD>/work.jsonl`; the manifest is a

@@ -4,6 +4,15 @@ You are tasked with conducting comprehensive research across the codebase to ans
 
 > **Work-item state is an append-only event log** — when this research belongs to a work item, register the artifact with `scripts/wlog.sh "$WD" artifact_added ...` then `scripts/wrender.sh "$WD"`; never hand-edit `manifest.md`. See [docs/dev/decisions/append-only-work-event-log.md](../../docs/dev/decisions/append-only-work-event-log.md).
 
+## 🚧 Repo isolation — no cross-repo reads or edits (MANDATORY)
+
+This command runs inside a **single repo** that in the PlatformSmith product has **no filesystem access to sibling repos**. The parallel sub-agents you spawn (codebase-locator, codebase-analyzer, codebase-pattern-finder, thoughts-*) are **all scoped to this repo only**:
+
+- **Never** `Read`/`Grep`/`Glob` any file **outside this repo** (another repo's working tree) — from this command or any sub-agent it launches. Your world is **this repo only**.
+- **To answer anything about a peer repo**, read the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`) — the sole cross-repo research surface. Reading your own `docs/kb/peers/**` is allowed.
+- If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
+- **Never edit another repo.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
+
 ## Initial Setup:
 
 When this command is invoked, respond with:
@@ -153,7 +162,7 @@ Then wait for the user's research query.
 
 8. **Register (if part of a work item) and present findings:**
    - Ensure the research document is saved in the appropriate location
-   - **If this research was saved under a work item directory** (`$WD`, e.g. `docs/work/<id>/research/...` or `repos/<repo>/docs/work/<id>/research/...`): register it in the append-only event log instead of hand-editing the manifest. With `<rel-path>` = the artifact path *relative to `$WD`*:
+   - **If this research was saved under a work item directory** (`$WD`, e.g. `docs/work/<id>/research/...`): register it in the append-only event log instead of hand-editing the manifest. With `<rel-path>` = the artifact path *relative to `$WD`*:
      ```bash
      scripts/wlog.sh "$WD" artifact_added kind=research path=<rel-path> title="{Topic}"
      scripts/wlog.sh "$WD" status_changed to=researching   # only if not already researching or later
