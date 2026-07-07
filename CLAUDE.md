@@ -13,6 +13,9 @@ This repository is part of the **Platform Smith** project. For cross-repository 
 
 **japi-core** is a type-safe Go framework/library for building REST APIs with PostgreSQL. It is consumed by other Go services via `go get github.com/platform-smith-labs/japi-core/v3`.
 
+> **Knowledge base**: `docs/kb/` summarizes this repo's capabilities for peer repos. Before a
+> cross-repo task, read `docs/kb/index.md` → `self/capabilities/`. Regenerate with `/kb-bootstrap`.
+
 The `.claude/` directory in this repo is a reusable Claude Code workflow template. Copy `.claude/` to other projects to enable intelligent development workflows.
 
 ## 🤖 Proactive Workflow Recommendations
@@ -174,7 +177,7 @@ All commands support standalone usage without work items:
 Development is organized in three **optional-nesting** tiers (commands in `.claude/commands/`, plus the `wishlist` skill). The epic entity is retired — a **standalone parent work item + `/conduct`** plays that role (legacy epics under the monorepo root's `docs/epics/` stay on `/epic`, frozen; never migrate them). See `docs/dev/decisions/parent-child-work-items-and-conduct.md` at the monorepo root.
 
 - **wishlist item** — a deferred, cross-cutting idea, at the **monorepo root** under `docs/wishlist/NNNN_slug/`. Picked up into 0..N parent work items over time (one sibling parent per milestone). Capture new ones with the `wishlist` skill.
-- **parent work item** — cross-repo coordination seat: an ordinary **standalone** work item (usually at the monorepo root's `docs/work/`). **Optional** — becomes a parent implicitly when its first child is created; only standalone items can parent (2-level).
+- **parent work item** — cross-repo coordination seat (usually at the monorepo root's `docs/work/`). **Optional** — a node becomes a parent implicitly when its first child is created; nesting is **N-level** (the `parent=` chain must reach a standalone root, no cycles; a mid-level node may not settle its final phase while its own children board is incomplete).
 - **work item** — this repo's execution unit, at `docs/work/work-<id>/`. Can be **standalone** (`/work "…"`) or a **child** declaring `parent=<work-id>` + `parent_project=<repo>` at creation.
 
 **Run from this repo:**

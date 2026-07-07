@@ -91,9 +91,12 @@ wishlist item     (a deferred idea; may spawn 0..N parents, one per milestone)  
 ```
 
 - A **work item** is **standalone** (`/work "prompt"`) or a **child**
-  (`--parent-work <parent-id> --parent-project <repo>` — both flags or neither). **Only a
-  standalone item can have children** (the 2-level file profile of the N-level L0 contract); the
-  tooling rejects a child-of-a-child.
+  (`--parent-work <parent-id> --parent-project <repo>` — both flags or neither). Nesting is
+  **N-level** (2026-07-06 relaxation): a child may itself parent children (program → sub-effort →
+  per-repo strand). Two rules: the `parent=` chain must terminate at a standalone root with **no
+  cycles** (validated at create), and a mid-level node obeys the **settling rule** — it may not
+  settle its final/validation `phase_done` toward its parent while its own children board is
+  incomplete.
 - A standalone item **becomes a parent implicitly** when its first child is created. The parent's
   children board is derived by `scripts/conduct-board.sh` from the children's `parent=`
   declarations — never hand-maintained.
@@ -164,10 +167,11 @@ You MUST execute this **3-phase automatic workflow**:
      scripts/wrender.sh "$WD"
      ```
      Omit `parent=`/`parent_project=` for a standalone item. Include **both** (never one) when the
-     user passed `--parent-work` + `--parent-project` — and first **validate the parent**: resolve
-     it (glob across `docs/work/` and `repos/*/docs/work/`), confirm it exists and is **standalone**
-     (its log has no `parent=` key). Error otherwise: only standalone items can parent (2-level
-     profile). `epic=` is legacy-only — never set it on new items.
+     user passed `--parent-work` + `--parent-project` — and first **validate the parent's ancestry
+     chain**: resolve it (glob across `docs/work/` and `repos/*/docs/work/`), then walk its
+     `parent=` links upward — the chain must terminate at a standalone root, with no cycles and
+     without the item being created (N-level nesting is allowed; the parent may itself be a
+     child). Error on any violation. `epic=` is legacy-only — never set it on new items.
    - **Always pass `request=`** with the user's original prompt verbatim — `wrender.sh` surfaces it as
      the `## Original Request` section (load-bearing context for git-resume). `wlog.sh` JSON-encodes it
      safely, so quotes/newlines in the prompt are fine. Do **not** hand-write a manifest — `wrender.sh`
@@ -498,9 +502,11 @@ first child is created.)
 
 1. **Resolve + validate the parent** (before creating anything): resolve `<parent-id>` by glob
    across `{root}/docs/work/` and `{root}/repos/*/docs/work/`; confirm its directory matches
-   `--parent-project` (via the Repo Aliases table); confirm it is **standalone** — its `work.jsonl`
-   carries no `parent=` key. If it's a child: error — *"only standalone items can parent children
-   (2-level profile)"*. If not found / ambiguous: error with matches.
+   `--parent-project` (via the Repo Aliases table); then **validate the ancestry chain**: walk the
+   parent's own `parent=` links upward — the chain must terminate at a **standalone root**, must
+   not revisit any node (**no cycles**), and must not include the item being created. Error on any
+   violation. If not found / ambiguous: error with matches. (N-level nesting is allowed — the
+   parent may itself be a child.)
 2. Mint the child id + scaffold exactly as the standalone Phase 1 flow, with the parent keys on the
    `created` event:
    ```bash
@@ -508,7 +514,13 @@ first child is created.)
      owner=<owner> request="<prompt>" parent=<parent-id> parent_project=<parent-repo-alias>
    scripts/wrender.sh "$WD"
    ```
-3. No parent-side registration is needed — the parent's board **discovers** this child on its next
+3. **Inherit scaffold rules.** Walk the ancestry chain root→parent; for each ancestor whose work
+   dir contains a **`scaffold-rules.md`**, copy its rules into this child's `context.md` (root's
+   first, nearest ancestor's last), noting the source (`inherited from
+   <ancestor-id>/scaffold-rules.md`). These rules bind this item's research/implementation (e.g.
+   the epistemics rule: prior research is a pointer, never gospel — independent research first,
+   then critical match).
+4. No parent-side registration is needed — the parent's board **discovers** this child on its next
    fold (`scripts/conduct-board.sh` scans for `parent=` declarations). Optionally proceed with the
    automatic research+requirements phases as in the standalone flow, honoring the parent's barrier.
 

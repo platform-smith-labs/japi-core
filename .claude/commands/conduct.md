@@ -1,10 +1,18 @@
 # Conduct Command (parent/child cross-repo conductor)
 
 **Purpose**: Coordinate multi-repo work from a **parent work item** — the successor of `/epic`.
-The epic entity is removed: a **standalone work item** plays the parent/conductor role, and **child
-work items** (in any repo) declare `parent=<work-id>` + `parent_project=<repo>` at creation. Only a
-standalone item can have children (**2-level file profile** of the N-level L0 contract — see
-`docs/dev/decisions/parent-child-work-items-and-conduct.md`).
+The epic entity is removed: a work item plays the parent/conductor role, and **child work items**
+(in any repo) declare `parent=<work-id>` + `parent_project=<repo>` at creation. Nesting is
+**N-level** (2026-07-06): any node may parent children — program → sub-effort → per-repo strand —
+with two rules: the `parent=` chain must terminate at a standalone root with **no cycles**
+(validated at child-create), and a mid-level node obeys the **settling rule** (below). See
+`docs/dev/decisions/parent-child-work-items-and-conduct.md`.
+
+> **Settling rule (mid-level nodes).** A node that has children wears two hats: child of its own
+> parent, conductor of its own cohort. It may **not** settle its final/validation `phase_done`
+> toward its parent while its own children board is incomplete — its children's completion is its
+> evidence. Earlier phases may settle on conductor judgment. The board prints the settling hint
+> when a mid-level node's children complete.
 
 > **Legacy epics are frozen, not migrated.** Anything under `docs/epics/` (and any work item with an
 > `epic=` link) stays on `/epic` + `scripts/epic-board.sh`, unchanged. New cross-repo work uses a
@@ -89,8 +97,9 @@ counter).
 Create a child work item in the target repo (conductor-driven creation — the **birth exception**:
 the conductor seeds the child's `created` event, then never writes that log again).
 
-1. Resolve `<parent-id>` → `$PWD_PARENT` and verify it is **standalone** (its log has no `parent=`
-   key). If it's a child: error — only standalone items can parent (2-level profile).
+1. Resolve `<parent-id>` → `$PWD_PARENT` and validate the chain: walk the parent's own `parent=`
+   links upward — the chain must terminate at a standalone root, must not revisit any node
+   (**no cycles**), and must not include the child being created. Error on any violation.
 2. Resolve `<repo>` via the root `CLAUDE.md` `## Repo Aliases` table.
 3. Mint the child id (`work-$(date +%y%m%d%H%M)-<slug>`, slug from the strand prompt — no scan),
    `WD={repo}/docs/work/<child-id>` (or `docs/work/<child-id>` for `solution`).
@@ -102,9 +111,15 @@ the conductor seeds the child's `created` event, then never writes that log agai
      parent=<parent-id> parent_project=<parent-repo> [wishlist=<n>]
    scripts/wrender.sh "$WD"
    ```
-5. Journal on the parent: `scripts/wlog.sh docs/work/<parent-id> note note="scaffolded <child-id> in <repo>"`,
+5. **Inherit scaffold rules.** Walk the child's ancestry chain root→parent; for each ancestor
+   whose work dir contains a **`scaffold-rules.md`**, copy its rules into the new child's
+   `context.md` (root's rules first, nearest ancestor's last) and note the source
+   (`inherited from <ancestor-id>/scaffold-rules.md`). A descendant that later becomes a parent
+   passes them on the same way. (This is how a program-level directive — e.g. the epistemics
+   "prior research is not gospel" rule — binds every descendant automatically.)
+6. Journal on the parent: `scripts/wlog.sh docs/work/<parent-id> note note="scaffolded <child-id> in <repo>"`,
    then `scripts/wrender.sh docs/work/<parent-id>`.
-6. Output the resume command: `cd {repo}/ && /work <child-id>`.
+7. Output the resume command: `cd {repo}/ && /work <child-id>`.
 
 The board discovers the child automatically on the next fold (its `parent=` declaration is the
 membership record) — never hand-add a roster row.
@@ -182,7 +197,8 @@ CWD is the root; else if `../repos/` exists ⇒ root is `..`. Repo names always 
 - `/work "prompt"` — create a **standalone** item (a potential parent — parenthood is implicit; it
   becomes a parent when its first child is created).
 - `/work --parent-work <parent-id> --parent-project <repo> "prompt"` — create a **child** directly
-  from within its repo (both flags present, or both absent). Same effect as `scaffold`.
+  from within its repo (both flags present, or both absent). Same effect as `scaffold`. The parent
+  may itself be a child (N-level); the create-time chain validation applies.
 - `/work <child-id>` / `/work <child-id> auto` — resume/execute a child strand. Parent-bound
   children follow the conductor rules in `/work` ("Conductor-aware work"): read the parent
   manifest's `**Barrier Phase**`, never recompute it, settle with `phase_done`, STOP.
