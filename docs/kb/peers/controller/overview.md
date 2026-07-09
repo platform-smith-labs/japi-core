@@ -2,10 +2,10 @@
 type: overview
 title: "Controller — thin WebSocket bridge + Docker lifecycle manager"
 tags: [controller, websocket, docker, runtime-lifecycle, thin-bridge]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "What the controller is and its role for peer repos: a stateful message relay and container lifecycle manager that owns no payload semantics"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/main.rs
   - src/lib.rs

@@ -2,10 +2,10 @@
 type: interface
 title: "Schema: integrations"
 tags: [schema, postgres, integration]
-timestamp: 2026-07-07T01:02:42Z
+timestamp: 2026-07-09T10:37:36Z
 description: "Final-state reference for integration provider/connection tables"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - migrations/0025_agent_definitions_and_secrets.sql
   - migrations/0037_integration_enums.sql
@@ -17,6 +17,7 @@ evidence:
   - migrations/0046_personal_workspace_scope.sql
   - migrations/0048_slack_auth_type_enum.sql
   - migrations/0049_slack_provider_seed.sql
+  - migrations/0059_llm_provider_claude.sql
 provides_interfaces:
   - {name: "integration tables", kind: postgres-schema, intent: "integration providers, auth types, credential connections and workspace links"}
 ---
@@ -55,7 +56,7 @@ Deployment-wide (global, no company_id) catalog of third-party integration provi
 **Constraints:**
 - PK: `integration_provider_id`; UNIQUE: `integration_provider_uuid`
 - UNIQUE: `code` (globally unique stable provider code, e.g. `claude_code`, `codex`)
-- CHECK `integration_provider_category_check`: category IN ('coding_agent','issue_tracker','docs','ci','cloud','sandbox','vcs','observability','notification','registry','communication')
+- CHECK `integration_provider_category_check`: category IN ('coding_agent','issue_tracker','docs','ci','cloud','sandbox','vcs','observability','notification','registry','communication','llm')
 - CHECK `integration_provider_cardinality_check`: cardinality IN ('single','multiple')
 
 **Indexes:**
@@ -63,7 +64,10 @@ Deployment-wide (global, no company_id) catalog of third-party integration provi
 
 Notes: `coding_agent_type` is set only for coding-agent providers (launch-resolver key); NULL otherwise.
 `cardinality` is immutable once any connection exists; `'single'` denormalizes into `enforce_single` on
-connections at INSERT.
+connections at INSERT. The `llm` category (e.g. the `anthropic` "LLM Provider - Claude" row) is
+distinct from `coding_agent`: an `llm` provider makes runtime-less structured Messages-API calls with a
+plain API key (`coding_agent_type` = NULL, auth type `claude_api_key`) and must not be conflated with
+the `claude_code` coding-agent provider whose OAuth setup token launches Claude Code sessions.
 
 ### integration_provider_auth_type
 Per-provider auth mechanisms with declarative form schemas: `field_schema` describes SECRET fields (encrypted into a connection's `credential_enc`), `config_schema` describes non-secret config (stored cleartext in a connection's `config`).

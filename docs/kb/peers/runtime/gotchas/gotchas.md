@@ -2,10 +2,10 @@
 type: gotcha
 title: "Runtime cross-cutting integrator traps"
 tags: [fire-and-forget, session-ids, backpressure, env-stripping, durability, readiness, path-confinement, shutdown]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Cross-cutting traps for any peer that commands, observes, or correlates against the runtime — not owned by a single capability"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/router/mod.rs
   - src/core/router/handlers.rs
@@ -22,8 +22,8 @@ evidence:
 
 ## 1. The fire-and-forget family — never await a reply
 
-Three input families deliberately have **no success reply**. A peer that awaits a response
-envelope to any of them hangs by design:
+Two input families deliberately have **no success reply**. A peer that awaits a response
+envelope to either of them hangs by design:
 
 - `claude_session_input` — success is silent; the only signal is the subsequent stream of
   `session_output` events. Only failures produce an error.
@@ -31,9 +31,14 @@ envelope to any of them hangs by design:
   credential surfaces later as an agent auth error inside the session. (The legacy
   `setup_claude_credentials` is the exception in the family: it replies with a
   `claude_credentials_setup` message carrying a success flag.)
-- `a2a_deliver` — every miss (missing/unknown `session_id`, session not in a receiving state,
-  malformed data, full inbound queue) is **warn-and-drop** with no response envelope. The
-  runtime never confirms delivery, so any upstream delivery mark is necessarily optimistic.
+
+`a2a_deliver` used to belong here but **no longer does**: it gets no direct *response envelope*, but
+its delivery outcome is now separately confirmed by an outbound **`a2a_delivered`** ack
+(`status:"delivered"` once handed to the session, `status:"failed"`+`error` on a miss), keyed by the
+inbound `message_id`. An upstream `delivered` mark is therefore **no longer necessarily optimistic**
+when a `message_id` rides the wire. The only still-silent cases are degrade-safe: **no `message_id`**
+on the wire (older orchestrator) or an un-correlatable missing `session_id` — those behave as the old
+warn-and-drop. Detail is in the a2a-messaging capability.
 
 Detail lives in the coding-agent-sessions and a2a-messaging capabilities; the trap here is the
 shared posture: these are one-way inputs, not request/response.
@@ -68,8 +73,9 @@ key logic on the event name to mean "this is Claude", and do not require a pid.
   (send fails, never blocks). A slow consumer loses events silently from the peer's view.
 - Session stdin (retained sessions): bounded at **100**.
 - Codex mid-turn inbound queue (spawn-per-turn): bounded at **100**; overflow rejects the input —
-  surfaced as an `error_response` on the `claude_session_input` command path, but as an invisible
-  warn-and-drop delivery miss for `a2a_deliver` (per gotcha 1).
+  surfaced as an `error_response` on the `claude_session_input` command path, and for `a2a_deliver`
+  as an `a2a_delivered{status:"failed"}` ack when a `message_id` is on the wire (invisible only in
+  the degrade-safe no-`message_id` case; per gotcha 1).
 
 ## 6. `PLATFORM_SMITH_*` env is stripped from sessions and spawned daemons — NOT from `execute_command` children
 

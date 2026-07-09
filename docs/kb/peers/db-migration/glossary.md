@@ -2,10 +2,10 @@
 type: glossary
 title: "Domain glossary for the platform_smith schema"
 tags: [db-migration, glossary, domain-vocabulary]
-timestamp: 2026-07-07T01:02:42Z
+timestamp: 2026-07-09T10:37:36Z
 description: "One-line definitions of the domain entities a peer needs to read the schema reference"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - migrations/0002_foundation.sql
   - migrations/0003_controllers.sql
@@ -27,6 +27,10 @@ evidence:
   - migrations/0040_conversation.sql
   - migrations/0050_slack_channel_tables.sql
   - migrations/0051_users_service_principal.sql
+  - migrations/0056_signal.sql
+  - migrations/0056_b2_primary_session_routing.sql
+  - migrations/0057_schedule.sql
+  - migrations/0058_webhook_trigger.sql
 ---
 
 # Glossary
@@ -74,6 +78,17 @@ evidence:
   envelope encryption, and a placeholder/contract pattern for deferred provisioning.
 - **workflow definition** — scoped canonical record of a workflow (runnable Conductor definition +
   platform annotations); Conductor itself stays tenant-blind.
+- **workflow run context** — per-execution sidecar (one row per Conductor workflow instance) recording
+  the workspace/project/execution_context a run targeted plus its owning definition, for the run inbox.
+- **signal** — durable tenant-scoped correlation token a workflow parks on (keyed by high-entropy
+  `correlation_id`) and is unparked from one of four sources; exactly-once terminal transition.
+- **schedule** — tenant-scoped cron trigger registry row; a DB-CAS claim fires the named workflow
+  exactly-once across pods.
+- **webhook trigger** — server-minted bearer credential (HMAC-hashed token) that starts a run of a
+  published workflow definition over HTTP; public URL carries the non-secret `webhook_trigger_uuid`.
+- **primary session (B2 routing)** — the elected session for a (conversation, project), referenced by
+  durable **logical name** (not a physical `session_id`) so it survives pod incarnations; a `session_role`
+  of `secondary` marks a read-only judge/aux session.
 - **artifact** — one logical named artifact per scope (session/project/workspace) with immutable
   versions over a content-addressed blob store.
 - **MCP tool grant** — per-session, tenant-scoped grant of a tool from the global platform MCP

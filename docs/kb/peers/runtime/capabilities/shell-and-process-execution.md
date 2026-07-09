@@ -2,17 +2,17 @@
 type: capability
 title: "Shell & process execution"
 tags: [shell, exec, daemon, process-management, commands]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "One-shot shell commands with captured output, plus daemon spawn/kill/list lifecycle inside a pod"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/router/handlers.rs
   - src/process/manager.rs
   - src/core/protocol/payload.rs
 see_also:
-  - {repo: runtime, capability: "controller-websocket-link", intent: "the transport these commands and replies travel over; readiness gating applies"}
-  - {repo: runtime, capability: "pid1-init-supervision", intent: "the supervised image CMD lives in this same registry (id `main`) and dies with shutdown"}
+  - {repo: runtime, capability: "Controller WebSocket link", descriptive: false, intent: "the transport these commands and replies travel over; readiness gating applies"}
+  - {repo: runtime, capability: "PID 1 init & supervision", descriptive: false, intent: "the supervised image CMD lives in this same registry (id `main`) and dies with shutdown"}
 ---
 
 # Shell & process execution

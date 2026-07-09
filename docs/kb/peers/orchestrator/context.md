@@ -2,9 +2,9 @@
 type: context
 title: "System context — who talks to the orchestrator"
 tags: [context, data-flow, multi-tenant]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T10:40:45Z
 repo: orchestrator
-commit_sha: 6843154
+commit_sha: 2fa8172
 ---
 # System context
 
@@ -13,7 +13,11 @@ commit_sha: 6843154
 - **controller** — connects to the orchestrator over WebSocket; manages Docker containers and bridges
   runtime traffic.
 - **runtime** — runs inside containers as PID 1; reached via the controller and via A2A.
-- Overall: `ps-ui → ps-api → orchestrator ⇄(WebSocket) controller → runtime`.
+- **ps-workflow** — the workflow engine. The orchestrator is an **outbound client** to it: it forwards
+  agent signals and session-lifecycle events to ps-workflow so parked workflow steps complete. This
+  bridge is opt-in (enabled only when `PS_WORKFLOW_BASE_URL` is configured — otherwise it ships dark).
+- Overall: `ps-ui → ps-api → orchestrator ⇄(WebSocket) controller → runtime`, plus a best-effort
+  outbound `orchestrator → ps-workflow` signal/completion path.
 
 **Ubiquitous data fact (stated once here, omitted from every capability).** The platform is
 multi-tenant: essentially all data and every request are scoped by company and workspace. Peers

@@ -2,10 +2,10 @@
 type: gotcha
 title: "Node identifiers: session_id is a name, runtime_uuid keys the instance"
 tags: [nodes, identifiers, session-id, runtime-uuid, correlation-store]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Two node identifier fields carry a value that diverges from what the name implies — session_id is a session name, runtime_uuid resolves to the runtime instance"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - internal/workers/nodes/session_start.go
   - internal/workers/nodes/sendprompt.go

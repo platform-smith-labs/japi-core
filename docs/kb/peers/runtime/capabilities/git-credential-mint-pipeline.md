@@ -2,10 +2,10 @@
 type: capability
 title: "Git credential mint pipeline"
 tags: [git, credentials, token-minting, uds, credential-helper]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "How in-pod git obtains short-lived tokens: helper binary → UDS → WS mint request, correlated response, nothing persisted"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/cred_server/mod.rs
   - src/credential_helper/main.rs

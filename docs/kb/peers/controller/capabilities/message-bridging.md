@@ -2,10 +2,10 @@
 type: capability
 title: "Message bridging (runtime-directed commands + runtime output)"
 tags: [controller, websocket, relay, runtime, cross-repo, orchestrator]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Which of the three delivery paths a runtime-directed command takes, and the timing/failure semantics each guarantees"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/orchestrator/relay.rs
   - src/orchestrator/executor.rs
@@ -63,7 +63,10 @@ through relay hangs until timeout then reports a spurious failure on a perfectly
 - **Single correlation key.** There is exactly one — `request_id` in the pending map. No second
   correlation scheme (e.g. by `session_id`) may be introduced.
 - **Blind-forward.** For relay + fire-and-forget the controller strips `runtime_name` and forwards
-  the remaining payload byte-identical; unknown/future fields survive verbatim (no field-drop).
+  the remaining payload byte-identical; unknown/future fields survive verbatim (no field-drop). This
+  now covers **metadata** as well as the payload `data`: any metadata key the controller does not
+  model (e.g. `to_session`, `to_project`) is passed through unchanged, so a peer adding a cross-hop
+  metadata field needs no controller change (see context.md). Modelled keys stay typed.
 - **Exactly one `task_response` per relayed request** (no duplicate, no empty placeholder).
 - **Never silently dropped.** An unrecognized runtime message is forwarded via the generic default.
 

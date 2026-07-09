@@ -2,10 +2,10 @@
 type: glossary
 title: "Controller glossary"
 tags: [glossary, runtime, builder, registry, relay, terminology]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Domain terms a peer repo needs to reason about the controller"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/websocket/registry.rs
   - src/protocol/commands.rs

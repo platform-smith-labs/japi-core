@@ -2,10 +2,10 @@
 type: gotcha
 title: "Conductor OSS is hidden — never call it directly"
 tags: [conductor, encapsulation, multi-tenancy, seam]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "The durable engine is an internal implementation detail; peers only ever call ps-workflow's L2 HTTP API"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - cmd/handlers/workflow_executions.go
   - internal/tenant/proxy.go

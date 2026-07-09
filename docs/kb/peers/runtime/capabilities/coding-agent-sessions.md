@@ -2,10 +2,10 @@
 type: capability
 title: "Coding-agent sessions (Claude + Codex)"
 tags: [sessions, claude, codex, streaming, spawn-per-turn, coding-agent]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Interactive Claude (retained NDJSON process) and Codex (spawn-per-turn) sessions: spawn/input/close commands, streamed session_output, session_closed lifecycle"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/session/manager.rs
   - src/session/claude/session_type.rs
@@ -17,9 +17,9 @@ evidence:
   - src/core/router/handlers.rs
   - src/core/protocol/payload.rs
 see_also:
-  - {repo: runtime, capability: "agent-config-and-secret-materialisation", intent: "spawn-inline agent_files/secret_files written before exec; a bad file fails the spawn"}
-  - {repo: runtime, capability: "coding-agent-credential-dispatch", intent: "stages the agent credentials this capability merges into the session env"}
-  - {repo: runtime, capability: "mcp-tool-server", intent: "the per-session platform tools both agents reach; seeded from granted_tools at spawn"}
+  - {repo: runtime, capability: "Agent-config and secret file materialisation", descriptive: false, intent: "spawn-inline agent_files/secret_files written before exec; a bad file fails the spawn"}
+  - {repo: runtime, capability: "Coding-agent credential dispatch", descriptive: false, intent: "stages the agent credentials this capability merges into the session env"}
+  - {repo: runtime, capability: "In-pod MCP tool server", descriptive: false, intent: "the per-session platform tools both agents reach; seeded from granted_tools at spawn"}
   - {repo: orchestrator, capability: "session-management", intent: "owns Codex conversation continuity (persists and replays the thread id) and the session NAME/UUID identities"}
 ---
 

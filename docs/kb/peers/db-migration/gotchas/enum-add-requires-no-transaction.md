@@ -2,10 +2,10 @@
 type: gotcha
 title: "Adding an enum value cannot run inside a transaction"
 tags: [migrations, enums, transactions, postgres]
-timestamp: 2026-07-07T01:13:56Z
+timestamp: 2026-07-09T10:39:10Z
 description: "ALTER TYPE ... ADD VALUE is disallowed in a transaction block; such migrations carry a no-transaction marker the runner honors, and should hold exactly one statement"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - pkg/migration/migration.go
   - migrations/0045_integration_status_disabled.sql

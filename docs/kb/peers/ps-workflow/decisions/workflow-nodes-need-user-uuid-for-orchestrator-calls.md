@@ -2,10 +2,10 @@
 type: decision
 title: "Mutating nodes must carry _ps.user_uuid"
 tags: [decision, nodes, auth, orchestrator, user-uuid]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Any node that mutates via orchestrator must be authored with _ps.user_uuid or the call is rejected 401"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - docs/dev/decisions/workflow-nodes-need-user-uuid-for-orchestrator-calls.md
   - internal/workers/nodes/session_start.go

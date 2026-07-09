@@ -2,10 +2,10 @@
 type: gotcha
 title: "runtime-stop and collect-result may return NOT_LIVE"
 tags: [nodes, cross-repo-gate, not-live, runtime-stop, collect-result]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Two nodes register but report a NOT_LIVE terminal state until their orchestrator routes are deployed on the target stack"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - internal/workers/nodes/runtime_stop.go
   - internal/workers/nodes/collect_result.go

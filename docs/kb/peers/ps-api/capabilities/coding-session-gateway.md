@@ -2,10 +2,10 @@
 type: capability
 title: "Coding-session gateway"
 tags: [sessions, coding-agent, claude, codex, gateway]
-timestamp: 2026-07-07T03:45:26Z
+timestamp: 2026-07-09T10:35:01Z
 description: "Lifecycle of Claude/Codex coding sessions through the gateway: create, list, input, events, rename, stop"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/handlers/sessions.go
   - cmd/models/session.go

@@ -2,10 +2,10 @@
 type: capability
 title: "Spawn product runtime"
 tags: [spawn-runtime, runtime-lifecycle, launch-family, docker, ports, launch-failed]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Create and start a product runtime container from a prebuilt image; success correlates by instance events, failure is delivered as a controller-origin launch_failed"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/orchestrator/executor.rs
   - src/protocol/orchestrator.rs

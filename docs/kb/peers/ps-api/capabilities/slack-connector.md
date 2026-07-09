@@ -2,10 +2,10 @@
 type: capability
 title: "Slack connector"
 tags: [slack, chat-ingress, identity, sessions, alerts, gateway]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "The Slack ingress — a second trusted gateway that maps Slack users to platform users and drives coding sessions from Slack (@mention, alerts, /smith)"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/slack/canonical.go
   - cmd/slack/config.go

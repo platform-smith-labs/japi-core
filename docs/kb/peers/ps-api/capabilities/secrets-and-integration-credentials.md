@@ -2,10 +2,10 @@
 type: capability
 title: "Secrets and integration credentials"
 tags: [secrets, integrations, credentials, encryption, multi-tenancy]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "Two subsystems: orchestrator-proxied secret stores, and DB-direct integration connections with server-side AEAD encryption"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/handlers/secret_stores.go
   - cmd/handlers/secret_schemas.go

@@ -2,10 +2,10 @@
 type: capability
 title: "DevContainer & credential setup (post-registration)"
 tags: [runtime-setup, devcontainer, credentials, coding-agent, fire-and-forget, cross-repo]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "After a runtime registers, the controller pushes down a fixed sequence of setup commands (devcontainer, codex creds, coding-agent credential, git clone) off spawn-time metadata."
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/websocket/server.rs
   - src/protocol/runtime.rs

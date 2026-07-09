@@ -4,6 +4,7 @@
 - [Schema: agent definitions + secrets](./schema-agent-secrets.md) — `interface` — Final-state reference for agent definition and secret store tables
 - [Schema: artifacts, MCP tools, audit](./schema-artifact-mcp-audit.md) — `interface` — Final-state reference for artifact plane, MCP tool grant and audit event tables
 - [Schema: channel (Slack)](./schema-channel-slack.md) — `interface` — Final-state reference for the Slack channel binding/routing tables
+- [Schema: Conductor signals, schedules & webhook triggers](./schema-conductor-signals.md) — `interface` — Final-state reference for the signal correlation store, cron schedule registry, and webhook trigger tables
 - [Schema: controller](./schema-controller.md) — `interface` — Final-state reference for controller and controller_instance tables
 - [Schema: conversation](./schema-conversation.md) — `interface` — Final-state reference for conversation, participant and message tables
 - [Schema: foundation (company, users, workspace)](./schema-foundation.md) — `interface` — Final-state reference for the tenancy foundation tables

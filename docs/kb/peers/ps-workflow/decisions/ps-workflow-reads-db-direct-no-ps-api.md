@@ -2,10 +2,10 @@
 type: decision
 title: "Status reads are DB-direct; no dependency on ps-api"
 tags: [decision, layering, db-direct, orchestrator, ps-api]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "ps-workflow reads runtime/session status straight from the shared platform DB and mutates via orchestrator — it never calls ps-api"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - docs/dev/decisions/ps-workflow-reads-db-direct-no-ps-api.md
   - internal/workers/nodes/reads.go

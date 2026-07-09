@@ -2,12 +2,14 @@
 type: capability
 title: "A2A peer messaging"
 tags: [a2a, messaging, cross-project, conversations, websocket]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T10:40:45Z
 description: "How one project's session sends a message to another project in the same workspace and receives a reply, plus the REST origination endpoint"
 repo: orchestrator
-commit_sha: 6843154
+commit_sha: 2fa8172
 evidence:
   - cmd/websocket/a2a_message.go
+  - cmd/websocket/a2a_delivered.go
+  - cmd/db/delivery_status.go
   - pkg/protocol/protocol.go
   - cmd/handlers/conversations.go
   - cmd/handlers/workspace_summary.go
@@ -42,6 +44,15 @@ the caller's job, not a synchronous return.
   `data:{type, body}`. Ack is `a2a_result` `{accepted, message_id, seq}` or `{accepted:false,
   error}`. Outbound to target: `a2a_deliver` (carries conversation_id, from_project, message_id,
   seq, target session name).
+- WS `a2a_delivered` (inbound, target runtime → orchestrator): the delivery receipt ack —
+  `metadata:{message_id, session_id (target name), runtime_name (auto-injected acking-runtime
+  identity)}` + `data:{status: delivered|failed, error?}`. Fire-and-forget (no reply owed).
+  `delivered` = injected into the session input (send_input Ok, NOT a read receipt); `failed` = a
+  genuine delivery miss. The ack is authorized by BOTH tenant (connection company) AND ownership (the
+  target session's host runtime_name must equal the acking runtime_name — a forged ack from another
+  runtime resolves to no receipt). Drives the `conversation_message_delivery_status` receipt
+  `dispatched`→`delivered`/`failed`. Degrade-safe: an older runtime sends none and the row stays
+  `dispatched` (re-driven on target start).
 - REST origination: request `OriginateMessageRequest` `{from_project, to_project, type, body,
   in_reply_to?}`; response `OriginateMessageResponse` `{message_id (server-generated), seq}`.
 - Peer discovery: `GET /api/v1/workspaces/{workspace_uuid}/agents/summary` lists the workspace's
@@ -53,7 +64,10 @@ the caller's job, not a synchronous return.
 - **Idempotent** on `(company, conversation, message_id)`; a redelivery returns the existing row
   rather than duplicating. `message_id` is the caller-enforced idempotency key on the WS path and
   server-generated on the REST path.
-- **At-least-once delivery** — the target runtime dedupes by `message_id`.
+- **At-least-once delivery** — a duplicate/late delivery is absorbed by the idempotent per-target
+  receipt (`conversation_message_delivery_status`, keyed on `(conversation_message_id, to_session_id)`);
+  the orchestrator does NOT assume the target runtime deduplicates. Honest delivery state comes from the
+  target's `a2a_delivered` ack (`dispatched`→`delivered`/`failed`), not an optimistic post-send mark.
 - **Never crosses tenant or workspace** — sender/target must both be participants of the same
   conversation (which lives in one company+workspace); a mismatched sender is rejected as a spoof.
 - **`seq`** is the row's monotonic replay cursor within the conversation.
@@ -77,8 +91,11 @@ the caller's job, not a synchronous return.
   message is recoverable but may not auto-drain in every path yet. UNKNOWN whether pending messages
   are redelivered automatically on target reconnect in the current build.
 
-**Business-critical data.** Messages persist as `conversation_message` rows keyed by conversation
-and `message_id`, carrying `delivery_state` (`pending`/`delivered`), `seq` (replay cursor),
-`in_reply_to`, and the verbatim `{type, body}` content forwarded byte-for-byte to the recipient.
+**Business-critical data.** Messages persist as immutable `conversation_message` rows (the append-only
+dispatch log) keyed by conversation and `message_id`, carrying `seq` (replay cursor), `in_reply_to`, and
+the verbatim `{type, body}` content forwarded byte-for-byte to the recipient. Per-target delivery state
+lives in the separate `conversation_message_delivery_status` receipt (`dispatched`/`delivered`/`failed`,
+one row per `(message, target session)`); the legacy `conversation_message.delivery_state`
+(`pending`/`delivered`) column is retained read-only and no longer authoritative.
 Routing authorization keys off conversation *participants* (a project must be a participant to
 originate or receive). Tenant scoping applies as everywhere — see context.

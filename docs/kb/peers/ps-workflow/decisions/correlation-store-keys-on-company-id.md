@@ -2,10 +2,10 @@
 type: decision
 title: "Correlation store keys on company_id (int), durable across restarts"
 tags: [decision, correlation-store, tenancy, durability, park]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "The session→task correlation store anchors on integer company_id and survives restarts, so parked tasks are re-armed after a redeploy"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - docs/dev/decisions/correlation-store-keys-on-company-id.md
   - internal/workers/host.go

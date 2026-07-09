@@ -2,10 +2,10 @@
 type: capability
 title: "Workflow definition secret refs"
 tags: [secrets, workflow-definition, secret-store, execution, multi-tenant]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Declare a definition's secret dependencies as refs into secret_store; resolved (not embedded) at execution time"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - cmd/handlers/workflow_definition_secret_refs.go
   - cmd/db/secret_resolution.go

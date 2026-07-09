@@ -2,10 +2,10 @@
 type: capability
 title: "Port-conflict eviction on spawn"
 tags: [spawn, port-conflict, eviction, runtime-lifecycle, docker]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "When a runtime spawn fails on a pinned host port, the controller auto-evicts an evictable peer runtime holding that port and retries once"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/orchestrator/executor.rs
   - src/protocol/spawn_error.rs

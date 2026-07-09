@@ -2,10 +2,10 @@
 type: decision
 title: "Park-style task defs register with retryCount:0"
 tags: [decision, conductor, taskdef, retry, teardown]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Custom park-style worker task defs default to retryCount:0 so an engine retry can't re-fire a settled park and wedge the workflow"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - docs/dev/decisions/park-style-taskdefs-need-retrycount-zero.md
   - internal/workers/host.go

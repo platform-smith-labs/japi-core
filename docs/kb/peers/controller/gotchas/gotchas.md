@@ -2,10 +2,10 @@
 type: gotcha
 title: "Controller cross-cutting integrator traps"
 tags: [controller, thin-bridge, launch-family, container-prefix, port-eviction, readiness, credentials]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Traps a peer repo hits when its task or message transits the controller — payload semantics, launch-family correlation, container-prefix isolation, port visibility, and readiness-vs-credential."
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/orchestrator/executor.rs
   - src/orchestrator/websocket_client.rs
@@ -31,14 +31,17 @@ fields inside those payloads — that meaning lives in the orchestrator (produce
 and the runtime (consumer). If a field is silently missing or malformed
 end-to-end, the bug is almost never "the controller changed it"; it forwarded
 what it received. Exceptions are narrow: content only the controller can author
-(devcontainer config, `spawn_error`, `port_mapping`, container IDs). Do not design
+(devcontainer config, `spawn_error`, container IDs). Do not design
 a contract that expects the controller to fill in or reinterpret a value.
 
-One sharp edge: the controller only carries metadata keys it names explicitly —
-there is no catch-all passthrough for metadata. A metadata key the orchestrator
-*requires* on a runtime-originated command must be a field the controller already
-knows, or it is dropped on the hop. Adding a new required cross-hop metadata field
-is therefore a coordinated three-repo change, not zero-controller-change.
+Metadata now blind-forwards too: the controller models only the metadata keys it
+reads or injects (`runtime_name`, `instance_uuid`, `task_id`/`request_id`) and
+passes **every other key through verbatim** via a serde catch-all. So adding a new
+cross-hop metadata field on a runtime-originated command (e.g. `to_session`,
+`to_project`) is **zero-controller-change** — the key survives the hop untouched.
+(This reverses the earlier rule that required declaring each field explicitly; a
+field the controller does model still stays typed and is never duplicated into the
+catch-all.)
 
 ## Launch-family commands have no task_id — do not await a task_response
 

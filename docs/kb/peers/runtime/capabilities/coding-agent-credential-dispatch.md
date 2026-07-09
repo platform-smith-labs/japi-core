@@ -2,10 +2,10 @@
 type: capability
 title: "Coding-agent credential dispatch"
 tags: [credentials, auth-type, claude, codex, bedrock, vertex, fire-and-forget]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "auth_type-dispatched provisioning of coding-agent credentials: file-writers (Claude creds file, Codex auth.json with provenance) and env-carriers staged for the next spawn — fire-and-forget, frozen per instance"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/session/credential_dispatch.rs
   - src/session/claude/credentials.rs
@@ -14,7 +14,7 @@ evidence:
   - src/core/router/handlers.rs
   - docs/dev/decisions/codex-credential-provenance-marker.md
 see_also:
-  - {repo: runtime, capability: "coding-agent-sessions", intent: "the sessions these credentials authenticate; a bad/missing credential surfaces only as that agent's auth failure"}
+  - {repo: runtime, capability: "Coding-agent sessions (Claude + Codex)", descriptive: false, intent: "the sessions these credentials authenticate; a bad/missing credential surfaces only as that agent's auth failure"}
   - {repo: orchestrator, capability: "Runtime container lifecycle", intent: "credentials are frozen per runtime instance — a credential change requires launching a fresh instance"}
 ---
 

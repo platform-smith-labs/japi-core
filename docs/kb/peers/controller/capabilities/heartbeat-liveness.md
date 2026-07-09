@@ -2,10 +2,10 @@
 type: capability
 title: "Heartbeat & liveness census"
 tags: [heartbeat, liveness, websocket, runtime-census, reconnect]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "How the controller reports its liveness and connected-runtime census to the orchestrator, and how its upstream connection reconnects."
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/orchestrator/websocket_client.rs
   - src/protocol/orchestrator.rs

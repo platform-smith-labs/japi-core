@@ -2,10 +2,10 @@
 type: capability
 title: "Controller WebSocket link"
 tags: [websocket, registration, readiness, reconnect, handshake, backpressure]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "The runtime's single northbound WS to the controller: registration → readiness sequencing, infinite-backoff reconnect, sole-writer metadata injection, drop-on-saturation backpressure"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/websocket/client.rs
   - src/utils/retry.rs

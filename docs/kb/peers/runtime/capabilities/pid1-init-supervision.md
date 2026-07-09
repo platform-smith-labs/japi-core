@@ -2,10 +2,10 @@
 type: capability
 title: "PID 1 init & supervision"
 tags: [pid1, init, supervision, zombie-reaping, shutdown, lifecycle]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Runtime as container ENTRYPOINT: supervises the image's original CMD, reaps only its own children, and owns graceful shutdown"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/main.rs
   - src/signals.rs
@@ -14,9 +14,9 @@ evidence:
   - src/core/router/handlers.rs
   - docs/dev/decisions/reaper-only-reaps-tracked-pids.md
 see_also:
-  - {repo: runtime, capability: "controller-websocket-link", intent: "registration vs readiness sequencing — a pod is safe to command only after its readiness event"}
-  - {repo: runtime, capability: "shell-and-process-execution", intent: "the supervised CMD child shares the same managed-process registry as spawned daemons"}
-  - {repo: runtime, capability: "in-pod-image-build", intent: "what a builder-mode pod does instead of supervising a customer CMD"}
+  - {repo: runtime, capability: "Controller WebSocket link", descriptive: false, intent: "registration vs readiness sequencing — a pod is safe to command only after its readiness event"}
+  - {repo: runtime, capability: "Shell & process execution", descriptive: false, intent: "the supervised CMD child shares the same managed-process registry as spawned daemons"}
+  - {repo: runtime, capability: "In-pod image build (builder mode)", descriptive: false, intent: "what a builder-mode pod does instead of supervising a customer CMD"}
 ---
 
 # PID 1 init & supervision

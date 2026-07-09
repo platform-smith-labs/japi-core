@@ -2,10 +2,10 @@
 type: capability
 title: "Auth and identity gateway"
 tags: [auth, jwt, identity, multi-tenancy, gateway]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "JWT issuance/validation and the trusted identity headers ps-api injects toward orchestrator"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/handlers/auth.go
   - cmd/handlers/register.go

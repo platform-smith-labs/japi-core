@@ -2,10 +2,10 @@
 type: interface
 title: "Downlink: controller ⇄ runtime containers (WS 9002)"
 tags: [websocket, runtime, downlink, command-catalog, passthrough]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Commands the controller sends a runtime container, and the messages/events a runtime sends back (forwarded upstream)"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/protocol/commands.rs
   - src/protocol/runtime.rs
@@ -110,6 +110,9 @@ Any runtime message the controller does **not** recognize falls through to the
 default arm and is forwarded upstream (enriched with `runtime_name`), **not**
 dropped. New runtime→orchestrator event types therefore work end-to-end without
 a controller change — the controller is deliberately dumb about their meaning.
+Unknown **metadata** keys survive the same forward verbatim (a serde catch-all),
+so a peer adding a cross-hop metadata field (e.g. `to_session`) needs no
+controller change either (see context.md).
 
 ## Gotchas
 - Readiness is decoupled from credentials: a runtime can be ready with no
