@@ -98,6 +98,34 @@ that region verbatim across re-renders. Children READ the barrier; they never re
 (one resolution closes both legs), A2 (auto-resolve `confirms`/`fyi` at delivery), and the
 two-layer validation split are preserved verbatim from the epic model.
 
+### 4b. The barrier is PUSHED to children, never read across (added 2026-07-13)
+
+Repo isolation is absolute: a child work item can NEVER read the parent's manifest (in the
+product, the parent lives in a different container). The derived `**Barrier Phase**` in the
+parent manifest is therefore the conductor's source of truth, and on EVERY `/conduct sync` the
+conductor pushes it into each child's own tree as `{child-WD}/barrier.md` — a conductor-owned
+file (same writer partition as `relays.jsonl`) carrying the phase, OPEN/HELD, and the child's
+per-role instruction verbatim from the board output. Children read ONLY their own `barrier.md`;
+a missing/stale one means "conductor hasn't synced" — the child idles at its last settled phase
+and asks the human to sync.
+
+Discovered live (2026-07-13, playbook-file-sync-plane run): the validation barrier opened but
+both child workers correctly idled at implementation — nothing in their repos told them,
+because sync delivered relays but not the barrier. The `/work` guidance that told children to
+"resolve the parent dir via the monorepo root" worked only by accident of the dev monorepo
+layout and violated the isolation model.
+
+```bash
+# CORRECT: conductor, on every sync, after the board fold
+write {child-WD}/barrier.md   # phase + OPEN/HELD + per-repo instruction from conduct-board.sh
+
+# CORRECT: child, on resume
+read $WD/barrier.md           # your only barrier source; missing ⇒ idle + ask for /conduct sync
+
+# WRONG: child resolving ../..-relative parent paths or reading the parent manifest
+cat ../../docs/work/<parent>/manifest.md   # cross-repo read — forbidden even when it works
+```
+
 ### 5. Sub-epic roadmaps → sequenced sibling parents
 
 3-level nesting is retired (for now). A multi-milestone effort is a chain of **sibling standalone

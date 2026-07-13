@@ -329,7 +329,7 @@ the translation table:
 | | Parent-bound (new) | Epic-bound (legacy) |
 |---|---|---|
 | Conductor | `/conduct <parent-id>` at the monorepo root | `/epic` at the monorepo root |
-| Barrier signal you READ | parent manifest's `**Barrier Phase**: <phase> (OPEN\|HELD)` | epic manifest's `**Epic Phase**` |
+| Barrier signal you READ | **`$WD/barrier.md`** — the conductor-PUSHED copy in YOUR OWN tree (repo isolation: you can NEVER read the parent manifest; missing/stale barrier.md ⇒ idle + ask the human to run `/conduct sync`) | epic manifest's `**Epic Phase**` |
 | Delivery events (`relay_received`/`relay_synced`) | conductor-owned **`relays.jsonl`** (via `rlog.sh`) — **you never write it** | conductor writes them into `work.jsonl` |
 | Your events (everything else, incl. `relay_sent`/`relay_resolved`/`escalated`) | your `work.jsonl` via `wlog.sh` | same |
 
@@ -337,8 +337,12 @@ Honor these rules in EVERY phase (requirements, planning, implementation), not j
 **messages** are immutable files under direction-named folders; relay **lifecycle** is events.
 Resolution is an **event, never a file move/delete**.
 
-1. **Read inbound first.** Read all `epic/` files + every **open inbound** relay file
-   (`relays/inbound/from-*.md`) whose `relay_received` has no matching `relay_resolved`.
+1. **Read inbound first.** Read `$WD/barrier.md` (the conductor-pushed barrier — your ONLY
+   barrier source; parent-bound items NEVER resolve or read the parent's directory), all `epic/`
+   files, and every **open inbound** relay file (`relays/inbound/from-*.md`) whose
+   `relay_received` has no matching `relay_resolved`. No `barrier.md` yet ⇒ the conductor has
+   not synced since you became active — act only up to the phase you have already settled, and
+   ask the human to run `/conduct <parent-id> sync`.
 2. **Mini-validate every open inbound relay** (diff-gate): check the ask against THIS repo's reality.
    - If it forces a change → do the needful for the current phase. If your response requires the
      sender to change something, write a reply outbound relay (next rule). Then close it:
@@ -441,8 +445,10 @@ gate; the recording model is identical.
 
 1. **Read state.** Resolve `<id>` → `$WD` and read `$WD/manifest.md` (the generated view; fold detail
    from `$WD/work.jsonl` if needed). Note `Status`, `**Parent**`/`**Epic**`, `**Epic Phase Done**`.
-   If `**Parent**: <parent-id> @ <repo>` is present, read the parent manifest's generated
-   `**Barrier Phase**` field (resolve the parent dir via the monorepo root, same as `/conduct`);
+   If `**Parent**: <parent-id> @ <repo>` is present, read the barrier from **`$WD/barrier.md`**
+   (the conductor-pushed copy — repo isolation forbids reading the parent manifest; a missing
+   `barrier.md` means the conductor has not synced yet ⇒ treat the barrier as your last settled
+   phase, output one line asking the human to run `/conduct sync`, and STOP with no event);
    legacy `**Epic**` items read the epic manifest's `**Epic Phase**` instead. Read `epic/context.md`
    if present. If `Status` is 🚨 Escalated: output one line ("escalated — awaiting human decision:
    <note>") and **STOP** (no event) — only a human `status_changed` resumes an escalated item.

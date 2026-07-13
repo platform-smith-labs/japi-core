@@ -191,7 +191,7 @@ Development is organized in three **optional-nesting** tiers (commands in `.clau
 - `/work "description"` — create a standalone work item (auto research + requirements)
 - `/work --parent-work <parent-id> --parent-project <repo> "description"` — create this repo's child strand under a parent (both flags, or neither)
 - `/work work-<id>` — resume; then `/planv0` → `/implement_plan` → `/commit` (and `/journal`, `/learn`)
-- Parent-bound work: READ the parent manifest's `**Barrier Phase**` (never recompute it), settle each phase with `phase_done` + STOP, and `escalated` (🚨, out-of-play-until-human) instead of spinning. Your writer is `scripts/wlog.sh` → `work.jsonl` only; the sibling `relays.jsonl` is the conductor's delivery log (read-only for you). Upward rollup is **derived** by `scripts/conduct-board.sh` at the monorepo root; child repos never push status up.
+- Parent-bound work: READ the conductor-pushed `$WD/barrier.md` for the barrier (never the parent manifest — repo isolation; never recompute it), settle each phase with `phase_done` + STOP, and `escalated` (🚨, out-of-play-until-human) instead of spinning. Your writer is `scripts/wlog.sh` → `work.jsonl` only; the sibling `relays.jsonl` is the conductor's delivery log (read-only for you). Upward rollup is **derived** by `scripts/conduct-board.sh` at the monorepo root; child repos never push status up.
 - `wishlist` skill — park a deferred cross-cutting idea
 
 **Run from the monorepo root**: `/conduct <parent-id> board|sync|scaffold|next` — the conductor (dashboard, push relay delivery, child scaffolding, milestone advance). `/epic …` is **legacy-only** for the frozen epics. (These resolve the root automatically, so they also work from here, but conventionally run at the root.)
