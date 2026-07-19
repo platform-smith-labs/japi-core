@@ -11,6 +11,18 @@ This plan is for **one repo**, which in the PlatformSmith product runs in its ow
 - If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
 - **Cross-repo edits are never allowed.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
 
+## 🔖 Provenance gate — no plan step on a system-critical [UNKNOWN] (MANDATORY, Rule E)
+
+Research and requirements carry provenance tags on cross-repo claims — `[CODE <path:line>]`, `[KB@<fold-ref>]`, `[RELAY <slug>]`, `[UNKNOWN]` (law: [docs/dev/decisions/research-provenance-and-relay-first.md](../../docs/dev/decisions/research-provenance-and-relay-first.md)). This command consumes them:
+
+- While reading research/requirements, collect every `[UNKNOWN]`-tagged claim a plan step would rely on. An **untagged** cross-repo claim in cited research is treated as `[UNKNOWN]` (it failed research validation — flag it).
+- A plan step MUST NOT silently build on a **system-critical** `[UNKNOWN]`. Exactly one of:
+  1. **Block on the drafted relay** — the research doc's Relay Candidates section holds the draft; hold the affected phase until the reply is folded back (`[UNKNOWN]` → `[RELAY <slug>]`, Rule D), or
+  2. **Carry the risk forward explicitly** — the plan step states: `built on UNKNOWN: <claim> — mitigation: <how the phase detects/handles being wrong>`.
+- Non-critical `[UNKNOWN]`s may be planned over without ceremony.
+- If planning itself consults `docs/kb/peers/**`, Rule B applies: record the fold vintage (in the plan or a research addendum) and treat postdated areas as `[UNKNOWN]`.
+- **Validation** (enforced in Step 4d/5): no phase depends on a system-critical `[UNKNOWN]` without either a blocking relay reference or an explicit `built on UNKNOWN:` line.
+
 > ## ⚠️ Work-item state is an append-only event log
 >
 > **Never hand-edit `manifest.md`.** A work item's state lives in `<WD>/work.jsonl`; the manifest is a
@@ -24,7 +36,7 @@ This plan is for **one repo**, which in the PlatformSmith product runs in its ow
 > - `scripts/wlog.sh "$WD" status_changed to=planning [note="..."]` — when planning starts
 > - `scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/master.md title="Master plan"` — per plan file
 > - `scripts/wlog.sh "$WD" artifact_added kind=plan path=plans/phase-1.md title="Phase 1 — ..."` — per phase file
-> - `scripts/wlog.sh "$WD" phase_done phase=planning [note="..."]` — when the plan is complete
+> - `scripts/wlog.sh "$WD" phase_done phase=planning [note="..."]` — when the plan is complete (parent/epic-bound items only — it is the barrier signal; standalone items skip it)
 >
 > ALWAYS follow any `wlog.sh` append(s) with `scripts/wrender.sh "$WD"` to regenerate the manifest.
 
@@ -306,6 +318,7 @@ authored prose and stay as-is.)
      - Recommended approaches
      - Architectural considerations
      - Existing codebase patterns discovered
+     - `[UNKNOWN]`-tagged claims + the Relay Candidates section (input to the **Provenance gate**, Rule E)
    - **IMPORTANT**: Consider insights from ALL research documents when planning
 
 3. **Read ALL Requirements Documents**:
@@ -968,6 +981,11 @@ After structure approval:
    - [ ] Specialist agents are specific to phase work
    - [ ] code-reviewer is included
    - [ ] Agent usage scenarios are described
+
+   Provenance gate (Rule E):
+   - [ ] No phase builds on a system-critical [UNKNOWN] without either a
+         blocking relay reference or an explicit "built on UNKNOWN: <claim> —
+         mitigation: ..." line
    ```
 
 3. **If placeholders found**:
@@ -1008,6 +1026,9 @@ After structure approval:
    - Confirm NO placeholders remain in any plan file
    - Verify all agent recommendations are specific and actionable
    - If any placeholders found → STOP and fix before proceeding
+   - **Provenance gate (Rule E)**: re-check that every system-critical `[UNKNOWN]` a phase depends on
+     is either relay-blocked or carried forward with an explicit `built on UNKNOWN: … — mitigation: …`
+     line. If a silent dependency is found → STOP and fix before proceeding
 
 2. **Save and organize the validated plan(s)**:
    - Ensure all plans are saved in the appropriate location

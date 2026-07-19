@@ -216,6 +216,12 @@ You MUST execute this **3-phase automatic workflow**:
    - Filename: `$WD/research/0001-{slug}-research.md`
    - Content follows standard research document structure (markdown prose — unchanged by the event log)
    - References work item: `Work Item: <id>`
+   - **MUST satisfy provenance Rules A–C** (full rules: `/research` **Provenance & relays**; law:
+     [research-provenance-and-relay-first](../../docs/dev/decisions/research-provenance-and-relay-first.md)):
+     every cross-repo claim tagged `[CODE <path:line>]` / `[KB@<fold-ref>]` / `[RELAY <slug>]` /
+     `[UNKNOWN]`; **KB Vintage** table when `docs/kb/peers/**` was consulted; **Relay Candidates**
+     section (parent-bound: relays written to `$WD/relays/outbound/` + `relay_sent` events; standalone:
+     drafts stay in the doc)
    - **IMPORTANT**: Initial research auto-created, more can be added with `/research --work <id>`
 
 3. **Record state via events** (never hand-edit the manifest):
@@ -252,6 +258,8 @@ You MUST execute this **3-phase automatic workflow**:
      - Constraints and assumptions
    - References work item: `Work Item: <id>`
    - References research: Link to relevant research docs
+   - Cross-repo claims cited from research **inherit their provenance tags** (Rule E consume side —
+     see `/new_req`); a requirement resting on a system-critical `[UNKNOWN]` must say so explicitly
    - **IMPORTANT**: Initial requirements auto-created, more can be added with `/new_req --work <id>`
 
 3. **Record state via events** (never hand-edit the manifest):
@@ -311,7 +319,11 @@ After both research and requirements are complete:
    actionable work in THIS repo regardless of phase (this is how a *late-surfacing* dependency
    re-engages a repo that had already settled). Only after every open inbound relay is validated →
    acted-on → answered (reply relay if needed) → **resolved** (an event), re-evaluate the settled phase
-   and proceed to step 4.
+   and proceed to step 4. **Reply relays fold back (Rule D)**: when an open inbound relay answers one
+   of this item's research `[UNKNOWN]`s, fold the answers into a **new numbered research addendum**
+   (`research/NNNN-*.md`, registered via `artifact_added`), upgrading `[UNKNOWN]` → `[RELAY <slug>]`,
+   before appending `relay_resolved`. See
+   [docs/dev/decisions/research-provenance-and-relay-first.md](../../docs/dev/decisions/research-provenance-and-relay-first.md).
 4. Check status (the rendered badge, derived from the last `status_changed`) and continue:
    - **🎯 Proposed** → Start Phase 2 (Research). Use `epic/` and inbound relays if present.
    - **📚 Researching** → Check what research exists in `research/`. If incomplete, continue. If complete, move to Phase 3 (Requirements).
@@ -458,6 +470,9 @@ gate; the recording model is identical.
    `relay_resolved` for `direction=inbound`+`slug`), process them per **Epic-aware work** above
    (validate → act → reply relay if needed → append `relay_resolved` + `wrender.sh`), and **STOP** —
    relays are this invocation's one phase-unit. Do not also advance a phase in the same run.
+   A reply relay answering a research `[UNKNOWN]` follows **Rule D**: fold the answers into a new
+   numbered research addendum (upgrade `[UNKNOWN]` → `[RELAY <slug>]`, register via `artifact_added`)
+   before resolving.
 
 3. **Pick the target phase (exactly one).**
    - **Parent-bound / epic-bound:** compare phase ordinals `requirements(1) < planning(2) <
@@ -473,7 +488,7 @@ gate; the recording model is identical.
 
    | Target phase | Action (run the command's logic inline) | Events appended (then `wrender.sh "$WD"`) |
    |---|---|---|
-   | `requirements` (from 🎯 Proposed / 📚 Researching) | Run **Phase 2 + Phase 3** (research + requirements) from the `/work "prompt"` flow | `status_changed to=researching` → `artifact_added kind=research …` → `status_changed to=requirements` → `artifact_added kind=requirements …`; if epic-bound, `phase_done phase=requirements` |
+   | `requirements` (from 🎯 Proposed / 📚 Researching) | Run **Phase 2 + Phase 3** (research + requirements) from the `/work "prompt"` flow; the research doc MUST satisfy provenance Rules A–C (tags, KB Vintage table, Relay Candidates — parent-bound: write relays + `relay_sent`) | `status_changed to=researching` → `artifact_added kind=research …` → `status_changed to=requirements` → `artifact_added kind=requirements …`; plus any `relay_sent` from Rule C; if epic-bound, `phase_done phase=requirements` |
    | `planning` (from 📝 Requirements) | Execute **`/planv0 --work <id>`** logic | `status_changed to=planning` → `artifact_added kind=plan …` (per plan file); if epic-bound, `phase_done phase=planning` |
    | `implementation` (from 🎨 Planning / 🔄 In Implementation) | Execute **`/implement_plan $WD/plans/master.md`** logic; when implementation is complete, run **`/commit --force`** (auto-commit only — no push/PR) | `status_changed to=implementation` → (on completion) `status_changed to=completed`; if epic-bound, `phase_done phase=implementation` |
    | `validation` | Run the plan's tests / validation steps | if epic-bound, `phase_done phase=validation`; `status_changed to=completed` (or `to=blocked` on failure) |

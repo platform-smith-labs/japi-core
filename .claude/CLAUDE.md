@@ -14,6 +14,7 @@ Every repo runs **in isolation**: in the PlatformSmith product each repo lives i
 - **Cross-repo knowledge** comes solely from the local **folded KB** at `docs/kb/peers/<repo>/` (start at `docs/kb/index.md`). `docs/kb/peers/**` is your own copy — reading it is allowed and is the *only* cross-repo research surface.
 - **Relay, don't reach**: if the KB is unclear on a **system-critical** fact, is a gap / marked `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** to that repo (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
 - **Cross-repo edits are never allowed.** If a cross-repo read seems truly unavoidable, **stop and ask the human** for explicit approval — the need is a KB gap to record.
+- **Cross-repo claims carry provenance tags** (`[CODE <path:line>]` / `[KB@<fold-ref>]` / `[RELAY <slug>]` / `[UNKNOWN]`); system-critical unknowns become drafted relays — see [`docs/dev/decisions/research-provenance-and-relay-first.md`](../docs/dev/decisions/research-provenance-and-relay-first.md).
 
 See [`docs/dev/decisions/repo-isolation-kb-first-cross-repo.md`](../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
 

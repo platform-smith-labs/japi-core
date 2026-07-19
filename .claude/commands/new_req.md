@@ -13,6 +13,10 @@ This skill runs inside a **single repo** that in the PlatformSmith product has *
 - If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
 - **Cross-repo edits are never allowed.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
 
+## 🔖 Provenance inheritance (Rule E, consume side — MANDATORY)
+
+Requirements citing research **inherit the provenance tags of the claims they cite** ([docs/dev/decisions/research-provenance-and-relay-first.md](../../docs/dev/decisions/research-provenance-and-relay-first.md)). When a REQ/NFR rests on a cross-repo claim, carry its tag forward next to the requirement — `[CODE <path:line>]`, `[KB@<fold-ref>]`, `[RELAY <slug>]`, or `[UNKNOWN]`. A requirement built on a system-critical `[UNKNOWN]` must say so explicitly (planv0's Rule E gate refuses to build on it silently). An untagged cross-repo claim in cited research is treated as `[UNKNOWN]`.
+
 ## Resolving `--work` IDs
 
 When the user passes `--work <id>` (e.g., `--work work-0027` or `--work work-2607010322-dark-mode`), the value is a **short reference**, never an index to compute. The directory may be the legacy short form (`work-NNNN`), the legacy slug form (`work-NNNN-MMDDHHMM-slug`), or the event-log form (`work-<YYMMDDHHMM>-<slug>`). Before any file read/write, **resolve the reference to the real directory by glob — never by arithmetic**:
@@ -107,7 +111,7 @@ Structure:
 ### [Requirement Category]
 
 - **REQ-001**: [Specific requirement statement]
-- **REQ-002**: [Another requirement]
+- **REQ-002**: [Requirement resting on a cross-repo claim — carry the cited research claim's tag] [KB@<fold-ref>]
 
 ### [Another Category]
 

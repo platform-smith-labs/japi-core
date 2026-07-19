@@ -13,6 +13,15 @@ This command runs inside a **single repo** that in the PlatformSmith product has
 - If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
 - **Never edit another repo.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
 
+## 🔖 Provenance tags (MANDATORY)
+
+This command is mostly in-repo; apply Rules A–B of [docs/dev/decisions/research-provenance-and-relay-first.md](../../docs/dev/decisions/research-provenance-and-relay-first.md):
+
+- **RULE A** — every **cross-repo** factual claim in the research document carries exactly one tag: `[CODE <path:line>]` (verified in THIS repo's code — e.g. this repo's side of a wire contract), `[KB@<fold-ref>]` (`<fold-ref>` = `<peer>:<fold-sha>`, e.g. `[KB@runtime:e154f05]`), `[RELAY <slug>]` (confirmed by a peer's reply relay), or `[UNKNOWN]` (unverified). Purely in-repo findings keep the existing `file:line` reference convention. An untagged cross-repo claim is a validation failure.
+- **RULE B** — before citing any `docs/kb/peers/<repo>/` content, record that peer KB's fold commit + fold date in a **KB Vintage** table in the document (fold sha/date: the "Folded from `<repo>` @ `<sha>` (`<date>`)" header in `docs/kb/peers/<repo>/index.md`; also listed per-peer in `docs/kb/index.md`). Any evidence the researched area postdates the fold ⇒ downgrade those claims to `[UNKNOWN]`.
+- Sub-agent prompts that touch `docs/kb/peers/**` MUST require per-claim provenance and a KB-vintage risk flag; unprovenanced peer claims come back as `[UNKNOWN]`.
+- List system-critical `[UNKNOWN]`s under **Open Questions** as relay candidates (drafted per `/research`'s RULE C); a later reply relay folds back per RULE D there.
+
 ## Initial Setup:
 
 When this command is invoked, respond with:
@@ -148,9 +157,17 @@ Then wait for the user's research query.
 
      [Links to other research documents in research/]
 
+     ## KB Vintage
+
+     <!-- REQUIRED whenever docs/kb/peers/** was consulted (RULE B); omit otherwise. -->
+
+     | Peer KB | Fold commit | Fold date | Postdate risk |
+     |---------|-------------|-----------|---------------|
+     | `docs/kb/peers/<repo>/` | `<sha>` | `<date>` | none — or evidence; affected claims → [UNKNOWN] |
+
      ## Open Questions
 
-     [Any areas that need further investigation]
+     [Any areas that need further investigation — include system-critical [UNKNOWN]s as relay candidates]
      ```
 
 7. **Add GitHub permalinks (if applicable):**
