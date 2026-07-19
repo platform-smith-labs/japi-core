@@ -51,7 +51,10 @@ helper for the event table's `since_seq` reads), it arrives as a relay from the 
    unterminated tail line at parse. No checkpoints, no ACKs, no per-message delivery protocol.
 3. **Run anchor = conversation + declared roster** — barrier = monotonic fold over the roster
    **as-of run creation** (never inferred from arriving events). **Class-1 fence**: watched-file
-   rows are telemetry/barrier input, **never** claim/lease arbitration.
+   rows are telemetry/barrier input, **never** claim/lease arbitration. **No TASK tables**; the
+   `playbook`/`playbook_run` catalog entities (definition/instantiation anchors — 0013 add. 6)
+   hold identity/config only, never coordination state; run *presentation* is a derived fold per
+   [playbook-presentation-dialect](./playbook-presentation-dialect.md) (0013 add. 7).
 4. **Conductor = the primary pod; stateless re-fold** — re-derives "what next" from a cursored
    table read each wake; restartable via the B2 primary-claim CAS. The metronome exists because an
    idle agent has no clock (a silently-dead worker emits nothing).
