@@ -80,7 +80,12 @@ counter).
 >   with a `status_changed` (or cancels).
 > - **The barrier signal is the parent manifest's `**Barrier Phase**` line** — unambiguous by
 >   construction: `<phase> (OPEN)` = every child may run `<phase>` now; `(HELD)` = nobody starts it.
->   **Children READ the barrier; they NEVER recompute it** (no per-repo relay tallying).
+>   **Children READ the barrier; they NEVER recompute it** (no per-repo relay tallying). Because a
+>   child runs in its own isolated repo/pod and cannot read the parent manifest, **`--write` also
+>   PUSHES the barrier as a `barrier_advanced` event into each child's OWN `relays.jsonl`** (fields
+>   `phase` + `state`); an isolated `/work auto` worker reads the barrier from there, locally. This
+>   push is idempotent (only on change) and skips the parent's own prime/self row. It is what keeps a
+>   finish-early worker from deadlocking at a barrier it otherwise couldn't see advance.
 > - **VALIDATION is TWO-LAYER.** Children run their **local** suites and relay
 >   `to-<parent-repo>--<repo>-e2e-needs` (`kind=blocks`, `phase=validation`); the **parent's repo**
 >   owns the cross-repo e2e, drives it on a live stack, resolves each needs-relay as covered+passing,
@@ -158,7 +163,11 @@ The conductor's only mutating action (children never push state up).
    - **Round-cap**: 3+ rounds on this edge this phase → do NOT deliver; append `escalated` on the
      **parent** log (edge + open asks) and surface it.
 3. **Refresh the derived board**: `scripts/conduct-board.sh --write <parent-id>` — recomputes the
-   `**Barrier Phase**` + children table into the parent manifest's BOARD region. Do not hand-edit.
+   `**Barrier Phase**` + children table into the parent manifest's BOARD region (do not hand-edit),
+   **and pushes the current barrier as a `barrier_advanced` event into each child's own
+   `relays.jsonl`** (idempotent, prime row skipped) so isolated `/work auto` workers read it locally
+   without crossing the repo boundary. See
+   `docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md`.
 4. **Journal the tick**: append one `note` on the parent log summarizing actions taken (deliveries,
    scaffolds, escalations) + `scripts/wrender.sh` the parent. This is the conductor's decision
    journal — the epic model's hand-authored Change Log, promoted to events.

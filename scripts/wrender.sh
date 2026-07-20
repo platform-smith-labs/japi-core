@@ -68,20 +68,20 @@ WORK_ID="$(basename "$WORK_DIR")"
 # ── scalar extractors (slurp the log once per query; tiny files) ───────────────
 # latest value of a header field carried on a created|meta_changed event
 field() { jq -rs --arg k "$1" \
-  'map(select((.type=="created" or .type=="meta_changed") and has($k)) | .[$k]) | (last // "—")' "$LOG"; }
+  'map(select((.type=="created" or .type=="meta_changed") and has($k)) | .[$k]) | (last // "—")' < "$LOG"; }
 
-title="$(jq -rs 'map(select(.type=="created"))[0].title // "Untitled"' "$LOG")"
-request="$(jq -rs 'map(select(.type=="created"))[0].request // ""' "$LOG")"
-created_ts="$(jq -rs '.[0].ts // ""' "$LOG")"
-updated_ts="$(jq -rs '.[-1].ts // ""' "$LOG")"
+title="$(jq -rs 'map(select(.type=="created"))[0].title // "Untitled"' < "$LOG")"
+request="$(jq -rs 'map(select(.type=="created"))[0].request // ""' < "$LOG")"
+created_ts="$(jq -rs '.[0].ts // ""' < "$LOG")"
+updated_ts="$(jq -rs '.[-1].ts // ""' < "$LOG")"
 # Status: last status_changed — unless a later `escalated` event exists (an
 # escalated item is out of play until a human decides; any subsequent
 # status_changed resumes/settles it).
 status_key="$(jq -rs '
   map(select(.type=="status_changed" or .type=="escalated")
       | (if .type=="escalated" then "escalated" else .to end))
-  | (last // "proposed")' "$LOG")"
-phase_done="$(jq -rs 'map(select(.type=="phase_done") | .phase) | (last // "—")' "$LOG")"
+  | (last // "proposed")' < "$LOG")"
+phase_done="$(jq -rs 'map(select(.type=="phase_done") | .phase) | (last // "—")' < "$LOG")"
 owner="$(field owner)"; epic="$(field epic)"; wishlist="$(field wishlist)"
 priority="$(field priority)"; effort="$(field effort)"
 parent="$(field parent)"; parent_project="$(field parent_project)"
@@ -130,7 +130,7 @@ fi
 artifacts="$(jq -rs '
   map(select(.type=="artifact_added"))
   | if length==0 then "_None yet._"
-    else map("- [\(.title // .path)](\(.path)) — \(.kind // "artifact")") | join("\n") end' "$LOG")"
+    else map("- [\(.title // .path)](\(.path)) — \(.kind // "artifact")") | join("\n") end' < "$LOG")"
 
 # Both relay sections fold work.jsonl + relays.jsonl (delivery events live in
 # relays.jsonl for parent-bound items; in work.jsonl for legacy epic-bound ones).
@@ -168,7 +168,7 @@ changelog="$(jq -rs '
     elif .type=="note"           then "note"
     else .type end;
   map("- \(.ts[0:10]) · seq \(.seq) · \(summ)\(if .note then " — " + .note else "" end)")
-  | join("\n")' "$LOG")"
+  | join("\n")' < "$LOG")"
 
 # ── assemble (atomic write via temp + mv) ─────────────────────────────────────
 TMP="$(mktemp)"

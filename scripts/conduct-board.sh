@@ -343,6 +343,22 @@ render() {
     fi
   fi
 
+  # ---- canonical barrier token to PUSH into each child (Option B) -----------
+  # Same four-way computation as the label above, reduced to (phase, state) so
+  # an isolated `/work auto` worker reads the barrier from its OWN relays.jsonl
+  # (barrier_advanced) instead of pulling the parent manifest across the repo
+  # boundary. state ∈ {open, held, complete}.
+  local BPHASE BSTATE
+  if (( base >= 4 && total_open == 0 && total_esc == 0 )); then
+    BPHASE="validation"; BSTATE="complete"
+  elif (( total_open > 0 )); then
+    BPHASE="$(phase_name $(( target > 4 ? 4 : target )))"; BSTATE="held"
+  elif (( base >= 4 && total_esc > 0 )); then
+    BPHASE="validation"; BSTATE="held"
+  else
+    BPHASE="$(phase_name $target)"; BSTATE="open"
+  fi
+
   # per-child state label
   for ((j=0;j<n;j++)); do
     if [[ "${R_esc[$j]}" == "true" ]]; then R_state[$j]="🚨 ESCALATED — needs a human decision (out of play)"
@@ -451,6 +467,32 @@ render() {
     inject_block "$PARENT_MD" "<!-- BEGIN BOARD -->" "<!-- END BOARD -->" "$bf"
     rm -f "$bf"
     printf '\033[2m%s\033[0m\n' "ⓘ wrote derived board into $PARENT_MD (between BOARD anchors; wrender.sh preserves it)."
+
+    # PUSH the barrier into each child's own territory (Option B). The child's
+    # relays.jsonl is conductor-owned (written only by rlog.sh), so this respects
+    # the single-writer rule while letting an isolated `/work auto` worker read the
+    # barrier locally — no cross-repo parent-manifest read. IDEMPOTENT: append a
+    # barrier_advanced only when (phase,state) actually changed. The prime/self row
+    # (the parent's own strand) is skipped — it lives here and reads the board directly.
+    local RL="$ROOT/scripts/rlog.sh"
+    for ((j=0;j<n;j++)); do
+      (( ${R_prime[$j]} == 1 )) && continue
+      local cwd_child last_phase last_state
+      cwd_child="$(work_dir "${R_repo[$j]}" "${R_wid[$j]}")"
+      [[ -d "$cwd_child" ]] || continue
+      last_phase=""; last_state=""
+      if [[ -s "$cwd_child/relays.jsonl" ]] && command -v jq >/dev/null 2>&1; then
+        read -r last_phase last_state < <(jq -rs '
+          ([ .[] | select(.type=="barrier_advanced") ] | last) as $b
+          | if $b == null then "— —" else "\($b.phase // "—") \($b.state // "—")" end' \
+          "$cwd_child/relays.jsonl")
+      fi
+      if [[ "$last_phase" != "$BPHASE" || "$last_state" != "$BSTATE" ]]; then
+        if bash "$RL" "$cwd_child" barrier_advanced phase="$BPHASE" state="$BSTATE" >/dev/null 2>&1; then
+          printf '\033[2m%s\033[0m\n' "ⓘ pushed barrier → ${R_repo[$j]}/${R_wid[$j]}: $BPHASE ($BSTATE)"
+        fi
+      fi
+    done
   else
     printf '\033[2m%s\033[0m\n' "ⓘ read-only snapshot. Run with --write to refresh the parent manifest board, or /conduct $PARENT_ID board (Claude) to sync-then-show."
   fi
