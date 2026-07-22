@@ -13,6 +13,26 @@ This skill runs inside a **single repo** that in the PlatformSmith product has *
 - If the KB is unclear on a **system-critical** fact, is a gap / `UNKNOWN`, or is contradicted by observed behavior → emit an A2A **relay** (the live ask-a-peer A2A channel — not a local script). Do **not** relay for routine confirmation.
 - **Cross-repo edits are never allowed.** If a cross-repo read seems unavoidable, **stop and ask the human**. See [docs/dev/decisions/repo-isolation-kb-first-cross-repo.md](../../docs/dev/decisions/repo-isolation-kb-first-cross-repo.md).
 
+## 🔖 Provenance & relays (MANDATORY)
+
+Operationalizes "KB-first, relay on gap" inside the research pipeline. Law: [docs/dev/decisions/research-provenance-and-relay-first.md](../../docs/dev/decisions/research-provenance-and-relay-first.md). Applies to **every** research document this command produces.
+
+**RULE A — Provenance tags.** Every cross-repo factual claim MUST carry exactly one tag:
+- `[CODE <path:line>]` — verified in THIS repo's code
+- `[KB@<fold-ref>]` — from the folded KB; `<fold-ref>` = `<peer>:<fold-sha>` (e.g. `[KB@runtime:e154f05]`)
+- `[RELAY <slug>]` — confirmed by a peer's reply relay
+- `[UNKNOWN]` — none of the above; treated as unverified
+
+An untagged cross-repo claim is a **validation failure** of the research document.
+
+**RULE B — KB vintage check (mandatory step).** Before using any `docs/kb/peers/<repo>/` content, record that KB's fold commit + fold date in the doc's **KB Vintage** table. The fold sha/date lives in each peer KB's `docs/kb/peers/<repo>/index.md` header line ("Folded from `<repo>` @ `<sha>` (`<date>`)") and in the per-peer `@<sha>` list in `docs/kb/index.md`. If there is any evidence the researched area **postdates the fold** (newer decision docs, work items, protocol/code comments referencing features the KB lacks), downgrade those claims to `[UNKNOWN]`.
+
+**RULE C — UNKNOWN → drafted relay (research OUTPUT).** Every research document MUST end with a **Relay Candidates** section: each SYSTEM-CRITICAL `[UNKNOWN]` becomes a fully drafted relay (frontmatter `from`/`to`/`kind`/`phase`/`ask` + concrete questions phrased for code-level answers). For **parent-bound** work items, actually write the relay file under `$WD/relays/outbound/` and append `relay_sent` via `scripts/wlog.sh` per the `/work` command's relay rules. For **standalone** items, keep the drafts in the doc (no conductor channel exists). Non-critical unknowns are **listed but NOT relayed** — the existing "do not relay for routine confirmation" rule stands. No system-critical `[UNKNOWN]`s ⇒ the section states `None` — never invent a relay to fill it.
+
+**RULE D — Fold-back.** When a reply relay arrives (inbound), fold its answers into the work item's research as a **new numbered research addendum**, upgrading `[UNKNOWN]` → `[RELAY <slug>]` where answered, and resolve the relay per the existing lifecycle (`relay_resolved` event; the file never moves).
+
+**Sub-agent contract.** Every research sub-agent this command spawns (codebase-locator/analyzer/pattern-finder, domain experts, synthesizers) MUST be instructed to (a) return **per-claim provenance** — the `path:line` or KB file behind each claim — so you can tag it, and (b) **flag KB-vintage risk**: any sign the KB is silent on a feature that this repo's decision docs, work items, or code comments imply exists. A sub-agent claim about a peer with no provenance defaults to `[UNKNOWN]`.
+
 ## Resolving `--work` IDs
 
 When the user passes `--work <id>` (e.g., `--work work-0027` or `--work work-2607010322-dark-mode`), the value is a **short reference**, never an index to compute. The directory may be the legacy short form (`work-NNNN`), the legacy slug form (`work-NNNN-MMDDHHMM-slug`), or the event-log form (`work-<YYMMDDHHMM>-<slug>`). Before any file read/write, **resolve the reference to the real directory by glob — never by arithmetic**:
@@ -82,6 +102,7 @@ Think deeply about the research requirements.
    - **codebase-locator** to find relevant files
    - **codebase-analyzer** to understand implementations
    - **codebase-pattern-finder** to find similar patterns
+   - **Every sub-agent prompt MUST require**: per-claim provenance (`path:line` or KB file for each claim) and a KB-vintage risk flag when the agent touches `docs/kb/peers/**` (see **Provenance & relays** above). Unprovenanced peer claims come back as `[UNKNOWN]`.
 4. Examine existing similar features or related code
 5. Identify technical constraints and opportunities
 6. Be unbiased - document all related files and how systems work today
@@ -143,7 +164,8 @@ After codebase research completes, determine research domain and add expert vali
    ```bash
    scripts/wlog.sh "$WD" status_changed to=researching
    ```
-3. Regenerate the manifest from the log:
+3. **If Rule C drafted relays and the item is parent-bound**: verify each relay file exists under `$WD/relays/outbound/` and append one `relay_sent` event per relay (event format per `/work`'s relay rules).
+4. Regenerate the manifest from the log:
    ```bash
    scripts/wrender.sh "$WD"
    ```
@@ -184,6 +206,14 @@ Create research documents using this structure:
 ## Research Scope
 
 [What was investigated, boundaries, focus areas]
+
+## KB Vintage
+
+<!-- REQUIRED whenever docs/kb/peers/** was consulted (RULE B). Omit only if no peer KB was touched. -->
+
+| Peer KB | Fold commit | Fold date | Postdate risk |
+|---------|-------------|-----------|---------------|
+| `docs/kb/peers/<repo>/` | `<sha>` | `<date>` | none — or cite the evidence; affected claims downgraded to [UNKNOWN] |
 
 ## Key Findings
 
@@ -270,6 +300,29 @@ Create research documents using this structure:
 - Additional research areas if needed
 - Specific technical decisions to make
 
+## Relay Candidates
+
+<!-- REQUIRED (RULE C). Every system-critical [UNKNOWN] above becomes a fully drafted relay here. -->
+
+### Drafted relays (system-critical [UNKNOWN]s)
+
+#### Relay: {slug}
+
+    ---
+    from: {this-repo}/{work-id}
+    to: {peer-repo}
+    kind: blocks
+    phase: {current barrier phase — research runs inside `requirements`}
+    ask: "<one-line ask>"
+    ---
+    [Concrete questions phrased for code-level answers — file/function/behavior, not "please confirm".]
+
+[Parent-bound work item: this file was written to relays/outbound/to-{peer}--{slug}.md and relay_sent appended. Standalone: draft kept here only.]
+
+### Non-critical unknowns (listed, NOT relayed)
+
+- [UNKNOWN] [claim] — why it is not decision-critical
+
 ---
 
 **Auto-generated cross-references will be added by planning/implementation commands**
@@ -316,5 +369,6 @@ Other commands will reference research documents in their templates.
 3. **Comprehensive Analysis**: Use specialized agents for thorough investigation
 4. **Actionable Insights**: Make findings useful for decision-making
 5. **Cross-Reference Ready**: Structure for linking from other documents
+6. **Provenance Validation**: Before finishing, re-read the document — every cross-repo claim carries exactly one of `[CODE <path:line>]` / `[KB@<fold-ref>]` / `[RELAY <slug>]` / `[UNKNOWN]`, the KB Vintage table is filled for every peer KB consulted, and the Relay Candidates section exists. A miss on any of these is a validation failure — fix before presenting.
 
 Think deeply, use TodoWrite to track your research tasks. Focus on thorough investigation and clear documentation that will be valuable for future planning and implementation.

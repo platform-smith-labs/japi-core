@@ -216,6 +216,12 @@ You MUST execute this **3-phase automatic workflow**:
    - Filename: `$WD/research/0001-{slug}-research.md`
    - Content follows standard research document structure (markdown prose — unchanged by the event log)
    - References work item: `Work Item: <id>`
+   - **MUST satisfy provenance Rules A–C** (full rules: `/research` **Provenance & relays**; law:
+     [research-provenance-and-relay-first](../../docs/dev/decisions/research-provenance-and-relay-first.md)):
+     every cross-repo claim tagged `[CODE <path:line>]` / `[KB@<fold-ref>]` / `[RELAY <slug>]` /
+     `[UNKNOWN]`; **KB Vintage** table when `docs/kb/peers/**` was consulted; **Relay Candidates**
+     section (parent-bound: relays written to `$WD/relays/outbound/` + `relay_sent` events; standalone:
+     drafts stay in the doc)
    - **IMPORTANT**: Initial research auto-created, more can be added with `/research --work <id>`
 
 3. **Record state via events** (never hand-edit the manifest):
@@ -252,6 +258,8 @@ You MUST execute this **3-phase automatic workflow**:
      - Constraints and assumptions
    - References work item: `Work Item: <id>`
    - References research: Link to relevant research docs
+   - Cross-repo claims cited from research **inherit their provenance tags** (Rule E consume side —
+     see `/new_req`); a requirement resting on a system-critical `[UNKNOWN]` must say so explicitly
    - **IMPORTANT**: Initial requirements auto-created, more can be added with `/new_req --work <id>`
 
 3. **Record state via events** (never hand-edit the manifest):
@@ -311,7 +319,11 @@ After both research and requirements are complete:
    actionable work in THIS repo regardless of phase (this is how a *late-surfacing* dependency
    re-engages a repo that had already settled). Only after every open inbound relay is validated →
    acted-on → answered (reply relay if needed) → **resolved** (an event), re-evaluate the settled phase
-   and proceed to step 4.
+   and proceed to step 4. **Reply relays fold back (Rule D)**: when an open inbound relay answers one
+   of this item's research `[UNKNOWN]`s, fold the answers into a **new numbered research addendum**
+   (`research/NNNN-*.md`, registered via `artifact_added`), upgrading `[UNKNOWN]` → `[RELAY <slug>]`,
+   before appending `relay_resolved`. See
+   [docs/dev/decisions/research-provenance-and-relay-first.md](../../docs/dev/decisions/research-provenance-and-relay-first.md).
 4. Check status (the rendered badge, derived from the last `status_changed`) and continue:
    - **🎯 Proposed** → Start Phase 2 (Research). Use `epic/` and inbound relays if present.
    - **📚 Researching** → Check what research exists in `research/`. If incomplete, continue. If complete, move to Phase 3 (Requirements).
@@ -329,16 +341,20 @@ the translation table:
 | | Parent-bound (new) | Epic-bound (legacy) |
 |---|---|---|
 | Conductor | `/conduct <parent-id>` at the monorepo root | `/epic` at the monorepo root |
-| Barrier signal you READ | the latest **`barrier_advanced`** event in **your OWN `$WD/relays.jsonl`** (fields `phase` + `state` ∈ `open\|held\|complete`) — the conductor PUSHES it there on every `--write`. **Never read the parent manifest across the repo boundary** (repo isolation). If no `barrier_advanced` exists yet, treat the barrier as the kickoff phase `requirements` and proceed. | epic manifest's `**Epic Phase**` |
-| Delivery events (`relay_received`/`relay_synced`) + the pushed **`barrier_advanced`** | conductor-owned **`relays.jsonl`** (via `rlog.sh`) — **you never write it** | conductor writes them into `work.jsonl` |
+| Barrier signal you READ | **`$WD/barrier.md`** — the conductor-PUSHED copy in YOUR OWN tree (repo isolation: you can NEVER read the parent manifest; missing/stale barrier.md ⇒ idle + ask the human to run `/conduct sync`) | epic manifest's `**Epic Phase**` |
+| Delivery events (`relay_received`/`relay_synced`) | conductor-owned **`relays.jsonl`** (via `rlog.sh`) — **you never write it** | conductor writes them into `work.jsonl` |
 | Your events (everything else, incl. `relay_sent`/`relay_resolved`/`escalated`) | your `work.jsonl` via `wlog.sh` | same |
 
 Honor these rules in EVERY phase (requirements, planning, implementation), not just research. Relay
 **messages** are immutable files under direction-named folders; relay **lifecycle** is events.
 Resolution is an **event, never a file move/delete**.
 
-1. **Read inbound first.** Read all `epic/` files + every **open inbound** relay file
-   (`relays/inbound/from-*.md`) whose `relay_received` has no matching `relay_resolved`.
+1. **Read inbound first.** Read `$WD/barrier.md` (the conductor-pushed barrier — your ONLY
+   barrier source; parent-bound items NEVER resolve or read the parent's directory), all `epic/`
+   files, and every **open inbound** relay file (`relays/inbound/from-*.md`) whose
+   `relay_received` has no matching `relay_resolved`. No `barrier.md` yet ⇒ the conductor has
+   not synced since you became active — act only up to the phase you have already settled, and
+   ask the human to run `/conduct <parent-id> sync`.
 2. **Mini-validate every open inbound relay** (diff-gate): check the ask against THIS repo's reality.
    - If it forces a change → do the needful for the current phase. If your response requires the
      sender to change something, write a reply outbound relay (next rule). Then close it:
@@ -441,40 +457,38 @@ gate; the recording model is identical.
 
 1. **Read state.** Resolve `<id>` → `$WD` and read `$WD/manifest.md` (the generated view; fold detail
    from `$WD/work.jsonl` if needed). Note `Status`, `**Parent**`/`**Epic**`, `**Epic Phase Done**`.
-   If `**Parent**: <parent-id> @ <repo>` is present, read the barrier from the latest
-   **`barrier_advanced`** event in **your OWN `$WD/relays.jsonl`** — it carries `phase` (the barrier
-   phase word) and `state` (`open`|`held`|`complete`), pushed there by the conductor on `--write`.
-   **Do NOT read the parent manifest across the repo boundary** (repo isolation — the parent lives in
-   another repo/pod). If no `barrier_advanced` event exists yet, treat the barrier as
-   `requirements` (`open`) and proceed — the kickoff phase. If `state=held`, do not start the phase:
-   only process open inbound relays (step 2), then STOP. Legacy `**Epic**` items read the epic
-   manifest's `**Epic Phase**` instead. Read `epic/context.md` if present. If `Status` is 🚨
-   Escalated: output one line ("escalated — awaiting human decision: <note>") and **STOP** (no event)
-   — only a human `status_changed` resumes an escalated item.
+   If `**Parent**: <parent-id> @ <repo>` is present, read the barrier from **`$WD/barrier.md`**
+   (the conductor-pushed copy — repo isolation forbids reading the parent manifest; a missing
+   `barrier.md` means the conductor has not synced yet ⇒ treat the barrier as your last settled
+   phase, output one line asking the human to run `/conduct sync`, and STOP with no event);
+   legacy `**Epic**` items read the epic manifest's `**Epic Phase**` instead. Read `epic/context.md`
+   if present. If `Status` is 🚨 Escalated: output one line ("escalated — awaiting human decision:
+   <note>") and **STOP** (no event) — only a human `status_changed` resumes an escalated item.
 
 2. **Open inbound relays are the highest-priority unit of work (epic-bound).** If the manifest's
    **Open Relays** lists any **open inbound** relay (a `relay_received` with no matching
    `relay_resolved` for `direction=inbound`+`slug`), process them per **Epic-aware work** above
    (validate → act → reply relay if needed → append `relay_resolved` + `wrender.sh`), and **STOP** —
    relays are this invocation's one phase-unit. Do not also advance a phase in the same run.
+   A reply relay answering a research `[UNKNOWN]` follows **Rule D**: fold the answers into a new
+   numbered research addendum (upgrade `[UNKNOWN]` → `[RELAY <slug>]`, register via `artifact_added`)
+   before resolving.
 
 3. **Pick the target phase (exactly one).**
    - **Parent-bound / epic-bound:** compare phase ordinals `requirements(1) < planning(2) <
-     implementation(3) < validation(4)` against the barrier read in step 1 (the `barrier_advanced`
-     `phase` from your OWN `relays.jsonl` for parent-bound; `**Epic Phase**` for legacy).
-     - If the barrier `state=held` (parent-bound) → the barrier is closed; do **not** start a phase.
-       Output `⏸ {repo} — barrier HELD @ {phase}; nothing to advance.` and **STOP** (no event).
+     implementation(3) < validation(4)` against the barrier read in step 1 (`**Barrier Phase**` for
+     parent-bound, `**Epic Phase**` for legacy).
      - If `ord(Epic Phase Done) ≥ ord(barrier phase)` → this repo is **at the barrier**. Output
        `✅ {repo} settled @ {Epic Phase Done}; waiting on conductor/other repos.` and **STOP** (no event
        appended).
-     - Else (barrier `state=open`) **target = the barrier phase**. Never pick a phase beyond it.
+     - Else **target = the barrier phase**. Never pick a phase beyond it.
    - **Standalone:** target = the next pending phase implied by `Status` (see mapping below).
 
 4. **Execute the target phase — and only that phase — to completion.** Record via events, then STOP:
 
    | Target phase | Action (run the command's logic inline) | Events appended (then `wrender.sh "$WD"`) |
    |---|---|---|
-   | `requirements` (from 🎯 Proposed / 📚 Researching) | Run **Phase 2 + Phase 3** (research + requirements) from the `/work "prompt"` flow | `status_changed to=researching` → `artifact_added kind=research …` → `status_changed to=requirements` → `artifact_added kind=requirements …`; if epic-bound, `phase_done phase=requirements` |
+   | `requirements` (from 🎯 Proposed / 📚 Researching) | Run **Phase 2 + Phase 3** (research + requirements) from the `/work "prompt"` flow; the research doc MUST satisfy provenance Rules A–C (tags, KB Vintage table, Relay Candidates — parent-bound: write relays + `relay_sent`) | `status_changed to=researching` → `artifact_added kind=research …` → `status_changed to=requirements` → `artifact_added kind=requirements …`; plus any `relay_sent` from Rule C; if epic-bound, `phase_done phase=requirements` |
    | `planning` (from 📝 Requirements) | Execute **`/planv0 --work <id>`** logic | `status_changed to=planning` → `artifact_added kind=plan …` (per plan file); if epic-bound, `phase_done phase=planning` |
    | `implementation` (from 🎨 Planning / 🔄 In Implementation) | Execute **`/implement_plan $WD/plans/master.md`** logic; when implementation is complete, run **`/commit --force`** (auto-commit only — no push/PR) | `status_changed to=implementation` → (on completion) `status_changed to=completed`; if epic-bound, `phase_done phase=implementation` |
    | `validation` | Run the plan's tests / validation steps | if epic-bound, `phase_done phase=validation`; `status_changed to=completed` (or `to=blocked` on failure) |

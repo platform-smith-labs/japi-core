@@ -237,6 +237,64 @@ run_resolved_slugs() {
     done; } | sort -u | tr '\n' ' '
 }
 
+# mdbox <file> — render the FIRST markdown table in <file> as a box-drawing table.
+# Column widths are display-width aware (emoji count as 2). Used by register mode so
+# `/conduct` shows a real bordered table instead of raw markdown pipes.
+mdbox() {
+  local file="$1" line
+  # Width math needs a UTF-8 locale so ${#s} counts code points, not bytes.
+  if ! printf '%s' "${LC_ALL:-${LANG:-}}" | grep -qiE 'utf-?8'; then
+    local LC_ALL loc
+    for loc in C.UTF-8 en_US.UTF-8 en_US.utf8; do
+      locale -a 2>/dev/null | grep -qix "$loc" && { LC_ALL="$loc"; break; }
+    done
+  fi
+  local -a rows=(); local seen=0
+  while IFS= read -r line; do
+    if [[ "$line" == \|* ]]; then
+      seen=1
+      [[ "$line" =~ ^\|[[:space:]]*:?-+ ]] && continue   # skip the |---| separator
+      rows+=("$line")
+    elif (( seen )); then break; fi
+  done < "$file"
+  (( ${#rows[@]} )) || return 0
+  dispw() { local s="$1" w; w=$(printf '%s' "$s" | grep -oE '✅|🟡|🔲|⭐|🎯|🔄|🚨|📋|🎉|🔵|🟢|⏳|👉' | wc -l | tr -d ' '); echo $(( ${#s} + w )); }
+  local ncols=0 nrows=0 c r cell dw; declare -A CELL; local -a W=(); local -a cols
+  for line in "${rows[@]}"; do
+    r="${line#|}"; r="${r%|}"; IFS='|' read -r -a cols <<< "$r"
+    (( ${#cols[@]} > ncols )) && ncols=${#cols[@]}
+    for ((c=0;c<${#cols[@]};c++)); do
+      cell="${cols[$c]}"; cell="${cell#"${cell%%[![:space:]]*}"}"; cell="${cell%"${cell##*[![:space:]]}"}"
+      cell="${cell//\*\*/}"; cell="${cell//\`/}"
+      CELL[$nrows,$c]="$cell"; dw=$(dispw "$cell"); (( dw > ${W[$c]:-0} )) && W[$c]="$dw"
+    done
+    nrows=$((nrows+1))
+  done
+  local seg sp out
+  mkborder() { local l="$1" m="$2" rr="$3" c; local out="$l"; for ((c=0;c<ncols;c++)); do seg=$(printf '─%.0s' $(seq 1 $(( ${W[$c]}+2 )))); out+="$seg"; (( c<ncols-1 )) && out+="$m"; done; out+="$rr"; printf '%s\n' "$out"; }
+  prow() { local ri="$1" c cell dw pad; local out="│"; for ((c=0;c<ncols;c++)); do cell="${CELL[$ri,$c]:-}"; dw=$(dispw "$cell"); pad=$(( ${W[$c]} - dw )); printf -v sp '%*s' "$pad" ''; out+=" $cell$sp │"; done; printf '%s\n' "$out"; }
+  mkborder "┌" "┬" "┐"; prow 0; mkborder "├" "┼" "┤"
+  for ((r=1;r<nrows;r++)); do prow "$r"; done
+  mkborder "└" "┴" "┘"
+}
+
+# render_tree <parent-id> <indent> — recursive scaffolded-work-item tree (register view).
+# Prints every descendant work item (direct + nested) with its repo + live status.
+render_tree() {
+  local pid="$1" indent="$2" f p d id repo st
+  command -v jq >/dev/null 2>&1 || return 0
+  for f in "$ROOT"/docs/work/*/work.jsonl "$ROOT"/repos/*/docs/work/*/work.jsonl; do
+    [[ -f "$f" ]] || continue
+    p="$(jq -rs 'map(select((.type=="created" or .type=="meta_changed") and has("parent"))|.parent)|(last // "")' "$f" 2>/dev/null)"
+    [[ "$p" == "$pid" ]] || continue
+    d="$(dirname "$f")"; id="$(basename "$d")"
+    repo="$(jq -rs 'map(select(.type=="created"))[0].repo // "?"' "$f" 2>/dev/null)"
+    st="$(awk -F': ' '/^\*\*Status\*\*:/{print $2; exit}' "$d/manifest.md" 2>/dev/null | sed 's/ *$//')"
+    printf '  %s%-46s %-13s %s\n' "$indent" "$id" "$repo" "${st:-?}"
+    render_tree "$id" "$indent    "
+  done
+}
+
 render() {
   local PARENT_DIR PARENT_MD PARENT_ID
   PARENT_DIR="$(resolve_parent "$PARENT_ARG")" || exit 1
@@ -256,6 +314,19 @@ render() {
       PARENT_REPO="solution"
     fi
   fi
+
+  # Custom board mode (2026-07-11): by default an item follows the normal phase-barrier
+  # workflow. An item may instead declare a **status-of-record FILE** and mark itself a
+  # `register` — a conductor-only node that does NO execution work of its own (e.g. a
+  # standing research register whose real status is a hand-maintained ticket list derived
+  # from research). In register mode: the ★ prime/self row is suppressed (the item is not
+  # a worker strand, so it never "owes" a phase and never drags the barrier), and the
+  # board points at the designated file for picked-up/finished/pending. Absent the marker,
+  # everything below is unchanged. Read the last board_mode/board_file from the item's own
+  # events.
+  local BOARD_MODE BOARD_FILE
+  BOARD_MODE="$(jq -rs 'map(select((.type=="created" or .type=="meta_changed") and has("board_mode"))|.board_mode)|(last // "")' "$PARENT_DIR/work.jsonl" 2>/dev/null)"
+  BOARD_FILE="$(jq -rs 'map(select((.type=="created" or .type=="meta_changed") and has("board_file"))|.board_file)|(last // "")' "$PARENT_DIR/work.jsonl" 2>/dev/null)"
 
   # N-level (2026-07-06): a child may itself conduct children. Surface its own
   # parent in the header for context; no guard.
@@ -285,8 +356,11 @@ render() {
   # PRIME/SELF ROW: the parent is also a worker strand (its own repo work). Prepend
   # it as a first-class gating member so it renders first, counts in the barrier min,
   # and gets its own run command — like a child. Guarded to only fire when children
-  # exist (above), so a childless standalone item is unaffected.
-  ROWS="$PARENT_REPO|$PARENT_ID"$'\n'"$ROWS"
+  # exist (above), so a childless standalone item is unaffected. SUPPRESSED in register
+  # mode — a register does no execution, so it is not a gating member.
+  if [[ "$BOARD_MODE" != "register" ]]; then
+    ROWS="$PARENT_REPO|$PARENT_ID"$'\n'"$ROWS"
+  fi
 
   # gather per-child state (escalated children are OUT OF PLAY: excluded from
   # the barrier min, block completion, and get no run-in-each-repo command)
@@ -375,13 +449,31 @@ render() {
   [[ -n "$PARENT_TITLE" ]] && printf '  %s\n' "$PARENT_TITLE"
   [[ -n "$OWN_PARENT" ]] && printf '  ↑ itself a child of: %s\n' "$OWN_PARENT"
   printf '  barrier: \033[1m%s\033[0m   ·   wishlist: %s   ·   last updated: %s\n' "$BARRIER_SHORT" "${WISH:-—}" "${UPDATED:---}"
-  printf '%s\n' "────────────────────────────────────────────────────────────────────────────"
-  printf '%-14s %-34s %-14s %s\n' "REPO" "WORK ITEM" "DONE" "STATE"
-  for ((j=0;j<n;j++)); do
-    printf '%-14s %-34s %-14s %s\n' "${R_repo[$j]}" "${R_wid[$j]:0:34}" "${R_phase[$j]}" "${R_state[$j]}"
-  done
-  printf '%s\n' "────────────────────────────────────────────────────────────────────────────"
-  printf '\033[2m%s\033[0m\n' "★ = prime/conductor's own strand (this parent's repo work; gates the barrier like a child)"
+  if [[ "$BOARD_MODE" == "register" ]]; then
+    printf '  \033[1m📋 register\033[0m — status of record: %s (this item does no execution; children below are the carved tickets)\n' "${BOARD_FILE:-<no board_file set>}"
+  fi
+  local _DIV="────────────────────────────────────────────────────────────────────────────"
+  printf '%s\n' "$_DIV"
+  if [[ "$BOARD_MODE" == "register" ]]; then
+    # Register view: the LIVE derived tree of scaffolded work items, then the curated
+    # task list (status of record) from the board_file.
+    printf '\033[1m%s\033[0m\n' "scaffolded work items (live):"
+    render_tree "$PARENT_ID" ""
+    printf '%s\n' "$_DIV"
+    if [[ -n "$BOARD_FILE" && -f "$PARENT_DIR/$BOARD_FILE" ]]; then
+      printf '\033[1m%s\033[0m\n' "tasks identified in research — status of record ($BOARD_FILE):"
+      mdbox "$PARENT_DIR/$BOARD_FILE"
+      grep -m1 '^\*\*Totals' "$PARENT_DIR/$BOARD_FILE" | sed 's/\*\*//g'
+      printf '%s\n' "$_DIV"
+    fi
+  else
+    printf '%-14s %-34s %-14s %s\n' "REPO" "WORK ITEM" "DONE" "STATE"
+    for ((j=0;j<n;j++)); do
+      printf '%-14s %-34s %-14s %s\n' "${R_repo[$j]}" "${R_wid[$j]:0:34}" "${R_phase[$j]}" "${R_state[$j]}"
+    done
+    printf '%s\n' "$_DIV"
+    printf '\033[2m%s\033[0m\n' "★ = prime/conductor's own strand (this parent's repo work; gates the barrier like a child)"
+  fi
 
   # ---- NEXT ----
   local NEXT="" STATEMSG=""
@@ -413,6 +505,14 @@ render() {
     local laggards=""
     for ((j=0;j<n;j++)); do [[ "${R_esc[$j]}" != "true" ]] && (( ${R_done[$j]} == base )) && laggards+="${R_repo[$j]} "; done
     NEXT="👉 advance ${laggards% } to $(phase_name $target) — see 'run in each repo' below."
+  fi
+  # Register mode overrides the phase-workflow NEXT: a register never "completes" and
+  # never runs its own phase — its job is to carve the next point. Point at the file.
+  if [[ "$BOARD_MODE" == "register" ]]; then
+    local _done=0 _tot=0 jj
+    for ((jj=0;jj<n;jj++)); do _tot=$(( _tot + 1 )); (( ${R_done[$jj]} >= 4 )) && _done=$(( _done + 1 )); done
+    STATEMSG="📋 register — $_done/$_tot carved ticket(s) validated; picked-up/finished/pending tracked in ${BOARD_FILE:-the register file}"
+    NEXT="👉 carve the next point:  /conduct $PARENT_ID scaffold <repo> \"…\"   (status of record: $PARENT_DIR/${BOARD_FILE:-<board_file>})"
   fi
   printf '%s\n' "$STATEMSG"
   printf '\033[1m%s\033[0m\n' "$NEXT"
@@ -458,6 +558,7 @@ render() {
     local bf; bf="$(mktemp)"
     {
       printf '**Barrier Phase**: %s\n\n' "$BARRIER_LONG"
+      [[ "$BOARD_MODE" == "register" ]] && printf '_📋 register — status of record: [%s](%s); children below are the carved tickets._\n\n' "${BOARD_FILE:-register file}" "${BOARD_FILE:-#}"
       printf '| Repo | Work Item | Phase | Status |\n'
       printf '|------|-----------|-------|--------|\n'
       for ((j=0;j<n;j++)); do

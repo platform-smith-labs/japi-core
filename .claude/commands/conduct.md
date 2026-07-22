@@ -33,6 +33,7 @@ with two rules: the `parent=` chain must terminate at a standalone root with **n
 >   | child `work.jsonl` | `created`\*, `status_changed`, `phase_done`, `artifact_added`, `relay_sent`, `relay_resolved`, `escalated`, … | the child's own tooling (`scripts/wlog.sh`) — \*`created` may be seeded by the conductor at scaffold time (the **birth exception**), then ownership hands off |
 >   | child `relays.jsonl` | `relay_received`, `relay_synced` (delivery state) | **the conductor only** (`scripts/rlog.sh`) |
 >   | **parent** `work.jsonl` | conductor decisions: tick notes, round-cap `escalated`, status | the conductor (it's the conductor's own item) |
+>   | child `barrier.md` | the conductor-PUSHED barrier signal (phase + OPEN/HELD + the child's per-role instruction) | **the conductor only** (written on every sync) — the child READS it, never edits it |
 >
 >   Reads are unrestricted — `wrender.sh` and `conduct-board.sh` fold both logs.
 
@@ -78,14 +79,14 @@ counter).
 >   a human decides** (distinct from Blocked): the board excludes it from the barrier min, emits no
 >   run-command for it, and the run cannot complete while any child is escalated. A human resumes
 >   with a `status_changed` (or cancels).
-> - **The barrier signal is the parent manifest's `**Barrier Phase**` line** — unambiguous by
->   construction: `<phase> (OPEN)` = every child may run `<phase>` now; `(HELD)` = nobody starts it.
->   **Children READ the barrier; they NEVER recompute it** (no per-repo relay tallying). Because a
->   child runs in its own isolated repo/pod and cannot read the parent manifest, **`--write` also
->   PUSHES the barrier as a `barrier_advanced` event into each child's OWN `relays.jsonl`** (fields
->   `phase` + `state`); an isolated `/work auto` worker reads the barrier from there, locally. This
->   push is idempotent (only on change) and skips the parent's own prime/self row. It is what keeps a
->   finish-early worker from deadlocking at a barrier it otherwise couldn't see advance.
+> - **The barrier signal is DERIVED in the parent manifest and PUSHED to children.** The parent
+>   manifest's `**Barrier Phase**` line is the source of truth — unambiguous by construction:
+>   `<phase> (OPEN)` = every child may run `<phase>` now; `(HELD)` = nobody starts it. But **repo
+>   isolation means a child can NEVER read the parent manifest** (maintainer, 2026-07-13) — on
+>   EVERY sync the conductor writes the current barrier into each child's own tree as
+>   `{child-WD}/barrier.md` (conductor-owned, like `relays.jsonl`). **Children READ their own
+>   `barrier.md`; they NEVER recompute the barrier and NEVER reach across repos for it.** A child
+>   whose `barrier.md` is missing or looks stale idles and asks the human to run `/conduct sync`.
 > - **VALIDATION is TWO-LAYER.** Children run their **local** suites and relay
 >   `to-<parent-repo>--<repo>-e2e-needs` (`kind=blocks`, `phase=validation`); the **parent's repo**
 >   owns the cross-repo e2e, drives it on a live stack, resolves each needs-relay as covered+passing,
@@ -163,11 +164,21 @@ The conductor's only mutating action (children never push state up).
    - **Round-cap**: 3+ rounds on this edge this phase → do NOT deliver; append `escalated` on the
      **parent** log (edge + open asks) and surface it.
 3. **Refresh the derived board**: `scripts/conduct-board.sh --write <parent-id>` — recomputes the
-   `**Barrier Phase**` + children table into the parent manifest's BOARD region (do not hand-edit),
-   **and pushes the current barrier as a `barrier_advanced` event into each child's own
-   `relays.jsonl`** (idempotent, prime row skipped) so isolated `/work auto` workers read it locally
-   without crossing the repo boundary. See
-   `docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md`.
+   `**Barrier Phase**` + children table into the parent manifest's BOARD region. Do not hand-edit.
+3b. **Push the barrier signal into EVERY child (mandatory, every sync).** Repo isolation means
+   children cannot read the parent manifest — this push is their ONLY barrier source. For each
+   child, write `{child-WD}/barrier.md` (conductor-owned; overwrite wholesale each sync):
+   ```markdown
+   # Barrier — conductor-pushed (DO NOT EDIT; sole writer: the conductor via /conduct sync)
+   **Parent**: <parent-id> @ <parent-repo>
+   **Barrier Phase**: <phase> — OPEN|HELD
+   **Pushed**: <date>
+   <one line: why — e.g. "all repos settled implementation, zero open relays">
+   ## Your instruction (<repo> — <role>)
+   <the board's per-repo run-command / two-layer validation instruction, verbatim>
+   ```
+   Take the phase + per-repo instruction from the fresh `conduct-board.sh` output (step 3) —
+   never hand-compute them. Skip a child only if its board state is 🚨 Escalated (out of play).
 4. **Journal the tick**: append one `note` on the parent log summarizing actions taken (deliveries,
    scaffolds, escalations) + `scripts/wrender.sh` the parent. This is the conductor's decision
    journal — the epic model's hand-authored Change Log, promoted to events.
