@@ -116,7 +116,7 @@ Automation tools:
 Monorepo strategies:
 - Repository structure
 - Subtree management
-- Submodule handling
+- Independent-clone (multi-repo) handling
 - Sparse checkout
 - Partial clone
 - Performance optimization

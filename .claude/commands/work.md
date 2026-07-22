@@ -341,20 +341,22 @@ the translation table:
 | | Parent-bound (new) | Epic-bound (legacy) |
 |---|---|---|
 | Conductor | `/conduct <parent-id>` at the monorepo root | `/epic` at the monorepo root |
-| Barrier signal you READ | **`$WD/barrier.md`** — the conductor-PUSHED copy in YOUR OWN tree (repo isolation: you can NEVER read the parent manifest; missing/stale barrier.md ⇒ idle + ask the human to run `/conduct sync`) | epic manifest's `**Epic Phase**` |
-| Delivery events (`relay_received`/`relay_synced`) | conductor-owned **`relays.jsonl`** (via `rlog.sh`) — **you never write it** | conductor writes them into `work.jsonl` |
+| Barrier signal you READ | the **latest `barrier_advanced` event in YOUR OWN `$WD/relays.jsonl`** — the conductor PUSHES it there on every `conduct-board.sh --write` (repo isolation: you can NEVER read the parent manifest). It carries `phase` + `state` (`open`\|`held`\|`complete`). No `barrier_advanced` yet ⇒ the conductor has not synced since you became active — treat the barrier as the kickoff phase (`requirements`) and ask the human to run `/conduct sync` | epic manifest's `**Epic Phase**` |
+| Delivery + barrier events (`relay_received`/`relay_synced`/`barrier_advanced`) | conductor-owned **`relays.jsonl`** (via `rlog.sh`) — **you never write it** | conductor writes them into `work.jsonl` |
 | Your events (everything else, incl. `relay_sent`/`relay_resolved`/`escalated`) | your `work.jsonl` via `wlog.sh` | same |
 
 Honor these rules in EVERY phase (requirements, planning, implementation), not just research. Relay
 **messages** are immutable files under direction-named folders; relay **lifecycle** is events.
 Resolution is an **event, never a file move/delete**.
 
-1. **Read inbound first.** Read `$WD/barrier.md` (the conductor-pushed barrier — your ONLY
-   barrier source; parent-bound items NEVER resolve or read the parent's directory), all `epic/`
-   files, and every **open inbound** relay file (`relays/inbound/from-*.md`) whose
-   `relay_received` has no matching `relay_resolved`. No `barrier.md` yet ⇒ the conductor has
-   not synced since you became active — act only up to the phase you have already settled, and
-   ask the human to run `/conduct <parent-id> sync`.
+1. **Read inbound first.** Read the barrier from the **latest `barrier_advanced` event in your own
+   `$WD/relays.jsonl`** (the conductor-pushed barrier — your ONLY barrier source; parent-bound items
+   NEVER resolve or read the parent's directory), all `epic/` files, and every **open inbound** relay
+   file (`relays/inbound/from-*.md`) whose `relay_received` has no matching `relay_resolved`. Read it
+   with, e.g., `jq -rs 'map(select(.type=="barrier_advanced"))|last' "$WD/relays.jsonl"` → `phase` +
+   `state`. If `state=held`, do **not** start that phase (only process open inbound relays). No
+   `barrier_advanced` yet ⇒ the conductor has not synced since you became active — act only up to the
+   phase you have already settled, and ask the human to run `/conduct <parent-id> sync`.
 2. **Mini-validate every open inbound relay** (diff-gate): check the ask against THIS repo's reality.
    - If it forces a change → do the needful for the current phase. If your response requires the
      sender to change something, write a reply outbound relay (next rule). Then close it:
@@ -444,10 +446,12 @@ gate; the recording model is identical.
 
 1. **One phase per invocation, then STOP.** Do not chain phases. The loop re-invokes for the next one.
    (Keeps each iteration cheap to reason about and barrier-safe.)
-2. **Barrier-safe for epic-bound work.** Never advance past the epic's current `**Epic Phase**`. Do the
-   barrier phase, append `phase_done phase=<target>`, STOP. The conductor (`/epic board`/`/epic sync` at
-   the monorepo root) is the **only** thing that opens the barrier — `auto` mode **never** runs `/epic
-   sync`, never edits the epic manifest, and never hand-edits its own `Epic Phase Done` (that line is
+2. **Barrier-safe for conductor-bound work.** Never advance past the current barrier — parent-bound:
+   the latest `barrier_advanced` in your own `relays.jsonl`; legacy epic-bound: the epic's
+   `**Epic Phase**`. Do the barrier phase, append `phase_done phase=<target>`, STOP. The conductor
+   (`/conduct board`/`/conduct sync`; legacy `/epic …` — at the monorepo root) is the **only** thing
+   that opens the barrier — `auto` mode **never** runs sync, never edits the parent/epic manifest,
+   never writes its own `relays.jsonl`, and never hand-edits its own `Epic Phase Done` (that line is
    rendered from the `phase_done` event).
 3. **Loop-safe / idempotent.** If there is nothing actionable this iteration (at the barrier waiting on
    other repos, blocked, or completed), **report it in one line and STOP without appending any event.**
@@ -457,11 +461,16 @@ gate; the recording model is identical.
 
 1. **Read state.** Resolve `<id>` → `$WD` and read `$WD/manifest.md` (the generated view; fold detail
    from `$WD/work.jsonl` if needed). Note `Status`, `**Parent**`/`**Epic**`, `**Epic Phase Done**`.
-   If `**Parent**: <parent-id> @ <repo>` is present, read the barrier from **`$WD/barrier.md`**
-   (the conductor-pushed copy — repo isolation forbids reading the parent manifest; a missing
-   `barrier.md` means the conductor has not synced yet ⇒ treat the barrier as your last settled
-   phase, output one line asking the human to run `/conduct sync`, and STOP with no event);
-   legacy `**Epic**` items read the epic manifest's `**Epic Phase**` instead. Read `epic/context.md`
+   If `**Parent**: <parent-id> @ <repo>` is present, read the barrier from the **latest
+   `barrier_advanced` event in your own `$WD/relays.jsonl`** — the conductor PUSHES it there on every
+   `conduct-board.sh --write` (repo isolation forbids reading the parent manifest):
+   ```bash
+   jq -rs 'map(select(.type=="barrier_advanced"))|last // {} | "\(.phase // "") \(.state // "")"' "$WD/relays.jsonl"
+   ```
+   giving the barrier `phase` + `state` (`open`|`held`|`complete`). If NO `barrier_advanced` exists yet,
+   the conductor has not synced since you became active ⇒ treat the barrier as the kickoff phase
+   (`requirements`, `state=open`) and proceed (a brand-new child's first phase never needs a push).
+   Legacy `**Epic**` items read the epic manifest's `**Epic Phase**` instead. Read `epic/context.md`
    if present. If `Status` is 🚨 Escalated: output one line ("escalated — awaiting human decision:
    <note>") and **STOP** (no event) — only a human `status_changed` resumes an escalated item.
 
@@ -475,13 +484,19 @@ gate; the recording model is identical.
    before resolving.
 
 3. **Pick the target phase (exactly one).**
-   - **Parent-bound / epic-bound:** compare phase ordinals `requirements(1) < planning(2) <
-     implementation(3) < validation(4)` against the barrier read in step 1 (`**Barrier Phase**` for
-     parent-bound, `**Epic Phase**` for legacy).
-     - If `ord(Epic Phase Done) ≥ ord(barrier phase)` → this repo is **at the barrier**. Output
-       `✅ {repo} settled @ {Epic Phase Done}; waiting on conductor/other repos.` and **STOP** (no event
-       appended).
-     - Else **target = the barrier phase**. Never pick a phase beyond it.
+   - **Parent-bound:** use the barrier `phase` + `state` read from your own `relays.jsonl` in step 1
+     (compare phase ordinals `requirements(1) < planning(2) < implementation(3) < validation(4)`).
+     - If barrier `state=complete` → the run is finished. Output `🎉 {repo} — run complete
+       (barrier: complete).` and **STOP** (no event).
+     - If barrier `state=held` → nobody starts the barrier phase yet (open relays / escalations
+       upstream). Output `⏳ {repo} — barrier {phase} HELD; waiting on conductor.` and **STOP** (no
+       event). (Open **inbound** relays were already handled in step 2, which STOPs before here.)
+     - Else (`state=open`): if `ord(Epic Phase Done) ≥ ord(barrier phase)` → this repo is **at the
+       barrier**. Output `✅ {repo} settled @ {Epic Phase Done}; waiting on conductor/other repos.`
+       and **STOP** (no event appended). Otherwise **target = the barrier phase**. Never pick a phase
+       beyond it.
+   - **Epic-bound (legacy):** same ordinal comparison against the epic manifest's `**Epic Phase**`
+     (read across to the epic manifest, which legacy epics still permit).
    - **Standalone:** target = the next pending phase implied by `Status` (see mapping below).
 
 4. **Execute the target phase — and only that phase — to completion.** Record via events, then STOP:
@@ -511,12 +526,17 @@ solution root (conductor loop):   /loop /conduct <parent-id> board   # sync rela
 each repo (worker loop):          /loop /work <id> auto              # execute current barrier phase, stop
 ```
 
-The worker reads the epic's `**Epic Phase**` (barrier, generated by `epic-board.sh`) and acts only up
-to it; the conductor folds every repo's `phase_done` events (→ `Epic Phase Done`) + open relays and
-opens the barrier when all repos settle with zero open relays. Neither loop mutates the other's
-authority — workers own `phase_done` + relay events; the conductor owns the derived `Epic Phase` +
-relay delivery. A worker at the barrier idles cheaply (step 3 STOP) until the conductor advances the
-barrier, at which point the next worker iteration does the new phase.
+The worker reads the barrier — parent-bound: the latest `barrier_advanced` event the conductor PUSHED
+into its own `relays.jsonl` (by `conduct-board.sh --write`); legacy epic-bound: the epic's
+`**Epic Phase**` — and acts only up to it; the conductor folds every repo's `phase_done` events
+(→ `Epic Phase Done`) + open relays and opens the barrier when all repos settle with zero open relays.
+Neither loop mutates the other's authority — workers own `phase_done` + relay events; the conductor
+owns the derived barrier + relay delivery + the `barrier_advanced` push. A worker at the barrier idles
+cheaply (step 3 STOP) until the conductor advances the barrier (a new `barrier_advanced` in its own
+tree), at which point the next worker iteration does the new phase. **Worst case is one sync-cycle of
+latency, never a deadlock** — the conductor cannot write the child's `phase_done` (single-writer), and
+now the child never has to reach across repos for the barrier. See
+[docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md](../../docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md).
 
 **Exception recap:** `auto` removes the per-phase review gate — each invocation executes one phase and
 stops, so the item advances without manual relaying. The default `/work <id>` keeps the review gates.

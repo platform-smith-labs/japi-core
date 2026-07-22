@@ -17,35 +17,24 @@ runs `/commit --force` after an implementation phase). In force mode:
 - The optional pre-commit code-reviewer check (step 2) becomes **non-blocking**: if it surfaces
   critical issues, record them in the commit body / session output but still commit (the loop
   surfaces them rather than halting on a prompt that no human will answer).
-- Everything else — Conventional Commits format, submodule-first ordering, the no-attribution
+- Everything else — Conventional Commits format, the no-attribution
   rule — is unchanged. **Force mode still does NOT push or open a PR**; it only commits.
 
 ## Process:
 
+> **Single-repo scope.** The child service repos are independent clones — to commit changes in a
+> service repo, run `/commit` inside `repos/<name>`. In the solution root, `/commit` only touches the
+> solution's own files (`repos/` is git-ignored). `/commit` always operates on the **current repo
+> only**.
+
 1. **Enumerate changed files deterministically:**
    - **Run `git status --porcelain`** to get the authoritative list of changed/added/deleted files. This is the source of truth for *what* changed — do not reconstruct the file list from conversation memory.
-   - In a repo with submodules, run `git status --porcelain --recurse-submodules` (or the per-submodule check in step 1a) so submodule changes are not missed.
    - You may use `git diff --stat` for a quick scale check; avoid full `git diff` unless you genuinely need to inspect content (it pollutes context).
    - Consider whether changes should be one commit or multiple logical commits.
 
    **What is deterministic vs. your judgment:**
    - **Deterministic (from git)**: the set of changed files. Always derive this from `git status --porcelain`.
    - **Judgment (yours)**: how to *group* files into logical commits, the commit type/scope, and the message wording. Use your session context — what the changes accomplish and why — to write meaningful messages, not to enumerate files.
-
-1a. **Check for Git Submodules:**
-   - Check if `.gitmodules` file exists to detect submodules
-   - If submodules exist, check each submodule for uncommitted changes:
-     ```bash
-     # For each submodule in apps/ or other locations
-     cd <submodule-path> && git status
-     ```
-   - Identify which submodules have changes that need to be committed
-   - Plan to commit submodule changes BEFORE updating parent repository references
-
-   **Submodule Commit Strategy**:
-   - Commit changes within each submodule first
-   - Then commit the parent repository to update submodule references
-   - This ensures the parent always points to valid commits in submodules
 
 2. **Pre-Commit Quality Check** (Enhancement - NEW - Optional):
 
@@ -80,12 +69,6 @@ runs `/commit --force` after an implementation phase). In force mode:
    d. **If no critical issues**, proceed to commit planning
 
 3. **Plan your commit(s) using Conventional Commits format:**
-   - **For Submodules**: Plan commits for each submodule separately
-     - Each submodule gets its own commit with appropriate message
-     - Use the submodule's context to write meaningful commit messages
-   - **For Parent Repository**: Plan commits for parent repo changes
-     - If only updating submodule references, use: `chore: update submodule references`
-     - If there are other changes, group them logically
    - Identify which files belong together
    - Determine the appropriate commit type and scope
    - Draft commit messages following the format: type[optional scope]: description
@@ -93,15 +76,10 @@ runs `/commit --force` after an implementation phase). In force mode:
    - Mark breaking changes with exclamation mark or BREAKING CHANGE footer
 
 4. **Present your plan to the user:**
-   - **Show submodule commits first** (if any):
-     - List each submodule with changes
-     - Show the commit message for each submodule
-     - List files to be committed in each submodule
-   - **Then show parent repository commits**:
-     - List the files you plan to add for each commit
-     - Show the commit message(s) you'll use in Conventional Commits format
+   - List the files you plan to add for each commit
+   - Show the commit message(s) you'll use in Conventional Commits format
    - Include quality check summary if performed
-   - Ask: "I plan to create [N] commit(s) ([X] in submodules, [Y] in parent repo) with these changes. Shall I proceed?"
+   - Ask: "I plan to create [N] commit(s) with these changes. Shall I proceed?"
    - **In `--force` mode, skip this confirmation entirely** — proceed directly to step 5.
 
 5. **Execute upon confirmation using subagent:**
@@ -115,26 +93,18 @@ runs `/commit --force` after an implementation phase). In force mode:
    - subagent_type: "git-workflow-manager"
    - description: "Execute planned git commits"
    - prompt: |
-       Execute the following git commits. Return only a brief summary.
+       Execute the following git commits in the current repo. Return only a brief summary.
 
-       Project root: [absolute path]
+       Repo root: [absolute path]
 
-       ## Submodule Commits (execute in order):
-       [For each submodule with changes:]
-       ### [submodule-name] ([path])
+       ## Commit(s):
+       [For each planned commit:]
        Files: [list of files to add]
        Message: [commit message]
 
-       ## Parent Repository Commit:
-       Files: [list of files to add, including submodule refs]
-       Message: [commit message]
-
        ## Instructions:
-       1. For each submodule: cd to path, git add files, git commit
-       2. Return to project root
-       3. Add parent files + submodule references
-       4. Commit parent repository
-       5. Run: git log --oneline -n [N] to show results
+       1. For each commit: git add files, git commit
+       2. Run: git log --oneline -n [N] to show results
 
        Return format:
        - List of commits created (hash + message)
@@ -144,7 +114,7 @@ runs `/commit --force` after an implementation phase). In force mode:
 
    **After subagent completes:**
    - Display the commit summary returned by the subagent
-   - Suggest: `git push --recurse-submodules=on-demand`
+   - Suggest: `git push`
 
 ## Conventional Commits Format:
 
@@ -201,63 +171,10 @@ type[optional scope]: description
 ## File Enumeration vs. Judgment:
 
 **Deterministic (derive from git, never from memory)**:
-- The set of changed/added/deleted files → `git status --porcelain` (`--recurse-submodules` when submodules are present)
+- The set of changed/added/deleted files → `git status --porcelain`
 - Inspect content only when needed → `git diff --stat`, or a scoped `git diff <path>` as a last resort (pollutes context)
 
 **Your judgment (use session context)**:
 - How to group files into logical, atomic commits
 - The commit type, scope, and message wording
 - Why the changes were made — captured in the message body
-
-## Submodule Workflow Example:
-
-When working with a monorepo that has submodules:
-
-1. **Detect submodules**:
-   ```bash
-   # Check if .gitmodules exists
-   test -f .gitmodules && echo "Submodules detected" || echo "No submodules"
-
-   # List submodules
-   git submodule status
-   ```
-
-2. **Check each submodule for changes**:
-   ```bash
-   cd apps/ps-portal-api && git status
-   cd ../ps-portal-app && git status
-   cd ../ps-web && git status
-   cd ../..
-   ```
-
-3. **Commit in submodules first**:
-   ```bash
-   # In submodule 1
-   cd apps/ps-portal-api
-   git add src/auth.ts
-   git commit -m "feat: add OAuth2 authentication"
-   cd ../..
-
-   # In submodule 2
-   cd apps/ps-web
-   git add components/Login.tsx
-   git commit -m "feat: add login component"
-   cd ../..
-   ```
-
-4. **Update parent repository**:
-   ```bash
-   # Parent repo now sees submodules have new commits
-   git status
-   # Shows: modified: apps/ps-portal-api (new commits)
-
-   # Add submodule references
-   git add apps/ps-portal-api apps/ps-web
-   git commit -m "chore: update submodules with authentication features"
-   ```
-
-5. **Push everything**:
-   ```bash
-   # Push submodules and parent in one command
-   git push --recurse-submodules=on-demand
-   ```

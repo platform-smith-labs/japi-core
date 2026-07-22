@@ -417,11 +417,13 @@ render() {
     fi
   fi
 
-  # ---- canonical barrier token to PUSH into each child (Option B) -----------
-  # Same four-way computation as the label above, reduced to (phase, state) so
-  # an isolated `/work auto` worker reads the barrier from its OWN relays.jsonl
-  # (barrier_advanced) instead of pulling the parent manifest across the repo
-  # boundary. state ∈ {open, held, complete}.
+  # ---- canonical barrier token PUSHED to children (phase word + state) -------
+  # Mirrors the BARRIER_SHORT/LONG branch structure exactly, distilled to the two
+  # fields an isolated `/work auto` worker needs: BPHASE (the phase word) + BSTATE
+  # (open|held|complete). --write pushes this into each child's own relays.jsonl as
+  # a barrier_advanced event, so the worker reads the barrier LOCALLY and never
+  # reaches across the repo boundary for the parent manifest. See
+  # docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md.
   local BPHASE BSTATE
   if (( base >= 4 && total_open == 0 && total_esc == 0 )); then
     BPHASE="validation"; BSTATE="complete"
@@ -569,31 +571,31 @@ render() {
     rm -f "$bf"
     printf '\033[2m%s\033[0m\n' "ⓘ wrote derived board into $PARENT_MD (between BOARD anchors; wrender.sh preserves it)."
 
-    # PUSH the barrier into each child's own territory (Option B). The child's
-    # relays.jsonl is conductor-owned (written only by rlog.sh), so this respects
-    # the single-writer rule while letting an isolated `/work auto` worker read the
-    # barrier locally — no cross-repo parent-manifest read. IDEMPOTENT: append a
-    # barrier_advanced only when (phase,state) actually changed. The prime/self row
-    # (the parent's own strand) is skipped — it lives here and reads the board directly.
-    local RL="$ROOT/scripts/rlog.sh"
+    # ---- PUSH the barrier into each child's OWN territory (isolation-clean) ----
+    # The parent manifest board (just written) is the source of truth, but an
+    # isolated child pod can NEVER read it. So push the canonical barrier token
+    # (BPHASE/BSTATE) into each child's conductor-owned relays.jsonl as a
+    # barrier_advanced event — the child's `/work auto` reads it locally. Skip the
+    # ★ prime/self row (the parent's own strand lives in the parent's repo and reads
+    # the manifest directly). IDEMPOTENT: append only when (phase,state) changed, so
+    # re-running --write with no barrier change pushes nothing.
+    local pushed=0
     for ((j=0;j<n;j++)); do
-      (( ${R_prime[$j]} == 1 )) && continue
-      local cwd_child last_phase last_state
-      cwd_child="$(work_dir "${R_repo[$j]}" "${R_wid[$j]}")"
-      [[ -d "$cwd_child" ]] || continue
-      last_phase=""; last_state=""
-      if [[ -s "$cwd_child/relays.jsonl" ]] && command -v jq >/dev/null 2>&1; then
-        read -r last_phase last_state < <(jq -rs '
-          ([ .[] | select(.type=="barrier_advanced") ] | last) as $b
-          | if $b == null then "— —" else "\($b.phase // "—") \($b.state // "—")" end' \
-          "$cwd_child/relays.jsonl")
+      [[ "${R_prime[$j]}" == "1" ]] && continue
+      local cwd; cwd="$(work_dir "${R_repo[$j]}" "${R_wid[$j]}")"
+      [[ -d "$cwd" ]] || continue
+      local last_p="" last_s=""
+      if [[ -s "$cwd/relays.jsonl" ]] && command -v jq >/dev/null 2>&1; then
+        read -r last_p last_s < <(jq -rs 'map(select(.type=="barrier_advanced"))|last // {} | "\(.phase // "") \(.state // "")"' "$cwd/relays.jsonl" 2>/dev/null)
       fi
-      if [[ "$last_phase" != "$BPHASE" || "$last_state" != "$BSTATE" ]]; then
-        if bash "$RL" "$cwd_child" barrier_advanced phase="$BPHASE" state="$BSTATE" >/dev/null 2>&1; then
+      if [[ "$last_p" != "$BPHASE" || "$last_s" != "$BSTATE" ]]; then
+        if "$ROOT/scripts/rlog.sh" "$cwd" barrier_advanced phase="$BPHASE" state="$BSTATE" >/dev/null 2>&1; then
           printf '\033[2m%s\033[0m\n' "ⓘ pushed barrier → ${R_repo[$j]}/${R_wid[$j]}: $BPHASE ($BSTATE)"
+          pushed=$(( pushed + 1 ))
         fi
       fi
     done
+    (( pushed == 0 )) && printf '\033[2m%s\033[0m\n' "ⓘ barrier unchanged — no barrier_advanced pushed (idempotent)."
   else
     printf '\033[2m%s\033[0m\n' "ⓘ read-only snapshot. Run with --write to refresh the parent manifest board, or /conduct $PARENT_ID board (Claude) to sync-then-show."
   fi

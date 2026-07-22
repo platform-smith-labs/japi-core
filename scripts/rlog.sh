@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# rlog.sh — append ONE relay-DELIVERY event to a work item's relays.jsonl.
+# rlog.sh — append ONE conductor-owned event to a work item's relays.jsonl.
 #
-# THE CONDUCTOR'S LOG. `relays.jsonl` is the delivery-state ledger of a work
-# item and has exactly ONE writer: the conductor (`/conduct sync`). Worker-side
-# tooling never writes here — workers append to `work.jsonl` via wlog.sh. This
-# writer partition (every jsonl has exactly one writer) is the file-mode mirror
-# of the product substrate's ownership model: delivery state is platform-owned
-# (conversation_message), node state is worker-owned (ps_task writes).
+# THE CONDUCTOR'S LOG. `relays.jsonl` is the conductor-owned ledger of a work
+# item and has exactly ONE writer: the conductor (`/conduct sync` +
+# `conduct-board.sh --write`). Worker-side tooling never writes here — workers
+# append to `work.jsonl` via wlog.sh. This writer partition (every jsonl has
+# exactly one writer) is the file-mode mirror of the product substrate's
+# ownership model: delivery state is platform-owned (conversation_message),
+# node state is worker-owned (ps_task writes).
 # See docs/dev/decisions/parent-child-work-items-and-conduct.md.
 #
-# It also carries the conductor's PUSH of the shared barrier: `barrier_advanced`
-# (fields: phase, state) — the conductor writes the current barrier into each
-# child's OWN territory so an isolated `/work auto` worker reads it locally
-# instead of pulling the parent manifest across the repo boundary. Not a relay;
-# same conductor-owned file, same single writer.
-# See docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md.
+# Two event families live here, both conductor-owned:
+#   * relay delivery — relay_received / relay_synced (push of a peer's message)
+#   * barrier push   — barrier_advanced (the conductor PUSHES the derived barrier
+#     into the child's OWN tree so an isolated `/work auto` worker reads the
+#     barrier locally instead of reaching across the repo boundary for the parent
+#     manifest; fields: phase + state). See
+#     docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md.
 #
 # Usage:
 #   scripts/rlog.sh <work-dir> <relay_received|relay_synced|barrier_advanced> [key=value ...]
@@ -26,14 +28,17 @@
 #       ask="expose the seam" path=relays/inbound/from-beta--beta-needs.md
 #   # conductor delivered this work item's outbound relay to its target:
 #   scripts/rlog.sh docs/work/work-...-y relay_synced slug=beta-needs
+#   # conductor pushed the current barrier into this child (conduct-board.sh --write):
+#   scripts/rlog.sh repos/alpha/docs/work/work-...-x barrier_advanced phase=planning state=open
 #
 # Contract:
 #   * ONLY the conductor invokes this (delivery + barrier push are conductor-driven).
 #   * Event types are restricted to the conductor vocabulary below — everything
 #     else (relay_sent, relay_resolved, phase_done, …) belongs to work.jsonl.
 #   * `seq`/`ts` assigned here; `actor` defaults to the git email.
-#   * wrender.sh folds work.jsonl + relays.jsonl together into the manifest's
-#     Open Relays / Upstream Messages sections; conduct-board.sh folds both
+#   * wrender.sh folds work.jsonl + relays.jsonl into the manifest's Open Relays /
+#     Upstream Messages sections (selecting relay_* types only — barrier_advanced
+#     is ignored by the renderer, no manifest noise); conduct-board.sh folds both
 #     when deriving the barrier.
 set -euo pipefail
 

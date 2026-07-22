@@ -158,6 +158,8 @@ repo landed, say so plainly; if any stopped, the run is **not** complete — lis
 - **Order**: process repos in dependency order when known (e.g. `db-migration` → `orchestrator` →
   runtime/UI) so a schema/API a peer depends on lands first; otherwise repo order is fine since each
   repo's main is independent.
-- **Submodule pointer**: if the monorepo root (`solution`) tracks these repos as submodules and the
-  user wants the root's submodule pointers bumped too, treat `solution` as one more repo in the set
-  (its "change" is the updated submodule SHAs) — but only if the user asks; default is per-repo only.
+- **Independent clones, no pointer bumps**: the parent `solution` repo and each service repo under
+  `repos/` are **independent git clones** (the root's `repos/` is git-ignored). There is no submodule
+  pointer / gitlink to bump — each repo in the set commits, pushes, and merges to its own `main`
+  independently. If the `solution` root itself has changes to land, treat it as one more repo in the
+  set (its own files only), same as any other.
