@@ -2,10 +2,10 @@
 type: overview
 title: "db-migration — owner of the platform_smith database schema"
 tags: [db-migration, schema, postgresql, migrations]
-timestamp: 2026-07-07T01:10:52Z
+timestamp: 2026-07-09T10:37:36Z
 description: "The Go migration runner that defines and applies the platform_smith PostgreSQL schema every Platform Smith service depends on"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - README.md
   - CLAUDE.md

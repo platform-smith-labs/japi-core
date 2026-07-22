@@ -2,10 +2,10 @@
 type: interface
 title: "Boot environment contract"
 tags: [boot, env-vars, configuration, lifecycle, controller]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "The env vars a controller must inject when creating a runtime container, and the conditions that make boot fatal"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/config.rs
   - src/main.rs
@@ -19,7 +19,7 @@ evidence:
 consumes_interfaces:
   - {name: "boot-env-injection", kind: env-vars, peer: controller, intent: "the controller sets these on the container at create time; the runtime reads them once at process start"}
 see_also:
-  - {repo: runtime, capability: "Controller WebSocket protocol", intent: "the env-selected launch path determines which readiness event the runtime emits"}
+  - {repo: runtime, capability: "Controller WebSocket protocol", descriptive: false, intent: "the env-selected launch path determines which readiness event the runtime emits"}
 ---
 
 # Boot environment contract

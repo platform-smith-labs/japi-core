@@ -9,8 +9,15 @@
 # (conversation_message), node state is worker-owned (ps_task writes).
 # See docs/dev/decisions/parent-child-work-items-and-conduct.md.
 #
+# It also carries the conductor's PUSH of the shared barrier: `barrier_advanced`
+# (fields: phase, state) — the conductor writes the current barrier into each
+# child's OWN territory so an isolated `/work auto` worker reads it locally
+# instead of pulling the parent manifest across the repo boundary. Not a relay;
+# same conductor-owned file, same single writer.
+# See docs/dev/decisions/conductor-pushes-barrier-into-child-territory.md.
+#
 # Usage:
-#   scripts/rlog.sh <work-dir> <relay_received|relay_synced> [key=value ...]
+#   scripts/rlog.sh <work-dir> <relay_received|relay_synced|barrier_advanced> [key=value ...]
 #
 # Examples:
 #   # conductor delivered an inbound relay INTO this work item:
@@ -21,8 +28,8 @@
 #   scripts/rlog.sh docs/work/work-...-y relay_synced slug=beta-needs
 #
 # Contract:
-#   * ONLY the conductor invokes this (delivery is push, conductor-driven).
-#   * Event types are restricted to the delivery vocabulary below — everything
+#   * ONLY the conductor invokes this (delivery + barrier push are conductor-driven).
+#   * Event types are restricted to the conductor vocabulary below — everything
 #     else (relay_sent, relay_resolved, phase_done, …) belongs to work.jsonl.
 #   * `seq`/`ts` assigned here; `actor` defaults to the git email.
 #   * wrender.sh folds work.jsonl + relays.jsonl together into the manifest's
@@ -42,7 +49,7 @@ fi
 command -v jq >/dev/null 2>&1 || { log_error "rlog.sh requires jq"; exit 1; }
 
 [[ $# -ge 2 ]] || {
-  log_error "usage: rlog.sh <work-dir> <relay_received|relay_synced> [key=value ...]"
+  log_error "usage: rlog.sh <work-dir> <relay_received|relay_synced|barrier_advanced> [key=value ...]"
   exit 1
 }
 
@@ -51,8 +58,8 @@ TYPE="$1"; shift
 
 [[ -d "$WORK_DIR" ]] || { log_error "work dir not found: $WORK_DIR"; exit 1; }
 case "$TYPE" in
-  relay_received|relay_synced) ;;
-  *) log_error "rlog.sh only appends delivery events (relay_received|relay_synced); '$TYPE' belongs in work.jsonl via wlog.sh"; exit 1 ;;
+  relay_received|relay_synced|barrier_advanced) ;;
+  *) log_error "rlog.sh only appends conductor events (relay_received|relay_synced|barrier_advanced); '$TYPE' belongs in work.jsonl via wlog.sh"; exit 1 ;;
 esac
 
 LOG="$WORK_DIR/relays.jsonl"

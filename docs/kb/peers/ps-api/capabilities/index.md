@@ -10,4 +10,5 @@
 - [Runtime launch gateway](./runtime-launch-gateway.md) — `capability` — How a peer launches a runtime container through ps-api and tracks it to readiness
 - [Secrets and integration credentials](./secrets-and-integration-credentials.md) — `capability` — Two subsystems: orchestrator-proxied secret stores, and DB-direct integration connections with server-side AEAD encryption
 - [Slack connector](./slack-connector.md) — `capability` — The Slack ingress — a second trusted gateway that maps Slack users to platform users and drives coding sessions from Slack (@mention, alerts, /smith)
+- [Workflow gateway](./workflow-gateway.md) — `capability` — How a peer drives workflow definitions, executions, approvals, and the inbox through ps-api's verbatim proxy to ps-workflow
 - [Workspace and tenant administration](./workspace-and-tenant-admin.md) — `capability` — Company-scoped admin surface: workspaces, users, workspace/controller tokens, environments, controller inventory, audit log

@@ -2,10 +2,10 @@
 type: gotcha
 title: "DB credentials come from the repo's .env via the build script — never -e flags"
 tags: [build, docker, credentials, configuration]
-timestamp: 2026-07-07T01:02:42Z
+timestamp: 2026-07-09T10:39:10Z
 description: "The build script injects database credentials from .env at container start; the house rule is to change credentials by editing .env and re-running the script, not by passing -e DB_* at docker run"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - build.sh
   - Dockerfile

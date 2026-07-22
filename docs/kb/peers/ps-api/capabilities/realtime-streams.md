@@ -2,10 +2,10 @@
 type: capability
 title: "Realtime streams"
 tags: [sse, websocket, streaming, sessions, launches, terminal]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "The three live streams the browser consumes: session-event SSE, launch-timeline SSE, and the terminal WebSocket proxy"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/handlers/session_sse.go
   - cmd/handlers/session_sse_transform.go

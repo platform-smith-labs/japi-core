@@ -2,17 +2,19 @@
 type: interface
 title: "Schema: workflows"
 tags: [schema, postgres, workflow]
-timestamp: 2026-07-07T01:02:42Z
+timestamp: 2026-07-09T10:37:36Z
 description: "Final-state reference for workflow definition/approval/notification tables"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - migrations/0029_workflow_definitions_and_secret_refs.sql
   - migrations/0031_workflow_approval.sql
   - migrations/0032_workflow_notification.sql
+  - migrations/0047_workflow_definition_ui_columns.sql
+  - migrations/0048_workflow_run_context.sql
   - migrations/0025_agent_definitions_and_secrets.sql
 provides_interfaces:
-  - {name: "workflow tables", kind: postgres-schema, intent: "workflow definitions, secret refs, approvals and notifications"}
+  - {name: "workflow tables", kind: postgres-schema, intent: "workflow definitions, secret refs, approvals, notifications and per-run context"}
 ---
 
 # Schema: workflows
@@ -40,6 +42,10 @@ Scoped canonical record of a workflow: runnable Conductor definition JSON plus P
 | is_archived | BOOLEAN | no | FALSE |
 | is_system_provided | BOOLEAN | no | FALSE |
 | is_mandatory | BOOLEAN | no | FALSE |
+| execution_context | workflow_execution_context | yes | — |
+| category | TEXT | yes | — |
+| labels | TEXT[] | no | '{}' |
+| published_at | TIMESTAMPTZ | yes | — |
 | created_at | TIMESTAMPTZ | no | NOW() |
 | updated_at | TIMESTAMPTZ | no | NOW() |
 
@@ -62,6 +68,8 @@ Scoped canonical record of a workflow: runnable Conductor definition JSON plus P
 - `idx_workflow_definition_mandatory` (company_id) WHERE is_mandatory = TRUE AND is_archived = FALSE
 
 Semantics: `workspace_id` set for workspace and project scopes (NULL for company); `project_id` set for project scope only. There is no 'system' scope — platform templates are `is_system_provided` clones per company. At most one mandatory lineage per company is enforced at the write layer, not by the schema. `conductor_json` is the runnable Conductor WorkflowDef; PS per-task concepts ride in task `inputParameters._ps`. `template_version` pins the clone-source version at clone time ("update available" signal); NULL if not a clone.
+
+Workflow Management UI classifiers (all additive, nullable/defaulted, no backfill — NULL/empty on legacy rows): `execution_context` is the run context a definition needs (`workspace` | `project`), a **separate axis** from `scope_type` (the definition level — note `company` is a valid scope_type but never an execution_context); NULL on legacy rows, set by ps-workflow on create/edit. `category` is a single coarse free-form classifier for list grouping (NULL = uncategorized). `labels` is a free-form `TEXT[]` of tags for filter/search (empty array, never NULL). `published_at` is set to NOW() on a successful Publish (draft→live signal for the badge + run-gate); NULL = never published (still a draft).
 
 ### workflow_definition_secret_ref
 
@@ -163,9 +171,45 @@ Durable tenant-scoped in-app notification rows emitted by the send-notification 
 
 Semantics: `data` is a schema-less payload (links, ids). No UNIQUE (company_id, workflow_notification_id) composite; no check constraints.
 
+### workflow_run_context
+
+Per-execution run-context sidecar: one row per Conductor workflow instance, written at start-execution by ps-workflow. The single source of truth for the workspace/project/execution_context a run targeted plus its owning definition (for friendly-name resolution in list-executions). Joined by `(company_id, workflow_id)` for the inbox roll-up and list-executions; the approval/notification tables carry no run-context. (Table name deliberately differs from the `workflow_execution_context` enum — Postgres types and tables share one namespace.)
+
+| column | type | null | default |
+|---|---|---|---|
+| workflow_run_context_id | SERIAL | no | (PK) |
+| workflow_run_context_uuid | UUID | no | gen_random_uuid() |
+| company_id | INTEGER | no | — |
+| workflow_definition_id | INTEGER | yes | — |
+| workspace_id | INTEGER | yes | — |
+| project_id | INTEGER | yes | — |
+| started_by_user_id | INTEGER | yes | — |
+| workflow_id | TEXT | no | — |
+| execution_context | workflow_execution_context | yes | — |
+| created_at | TIMESTAMPTZ | no | NOW() |
+| updated_at | TIMESTAMPTZ | no | NOW() |
+
+**Constraints:**
+- PK: `workflow_run_context_id`; UNIQUE: `workflow_run_context_uuid`
+- FK `company_id` → company(company_id)
+- Composite FK (company_id, workflow_definition_id) → workflow_definition(company_id, workflow_definition_id) — no ON DELETE CASCADE
+- Composite FK (company_id, workspace_id) → workspace(company_id, workspace_id)
+- Composite FK (company_id, project_id) → project(company_id, project_id)
+- Composite FK (company_id, started_by_user_id) → users(company_id, user_id)
+- UNIQUE (company_id, workflow_id) — one context row per Conductor instance; the natural upsert key
+- UNIQUE (company_id, workflow_run_context_id) (composite-FK anchor)
+
+**Indexes (all partial):**
+- `idx_workflow_run_context_company_workspace` (company_id, workspace_id) WHERE workspace_id IS NOT NULL
+- `idx_workflow_run_context_company_project` (company_id, project_id) WHERE project_id IS NOT NULL
+- `idx_workflow_run_context_company_definition` (company_id, workflow_definition_id) WHERE workflow_definition_id IS NOT NULL
+
+Semantics: `workflow_id` is the Conductor workflow instance id (string) — the join key to `workflow_approval`/`workflow_notification`. `workflow_definition_id` is the owning definition for name resolution (NULL if not resolvable). `execution_context` is a snapshot of the definition's `execution_context` at start (NULL if unknown). `workspace_id` is set for project-context runs too; `project_id` is NULL for workspace-context runs.
+
 ## Enum types
 
 - **workflow_definition_scope_type**: `company`, `workspace`, `project`
+- **workflow_execution_context**: `workspace`, `project` — the run context a definition/execution targets; distinct from `scope_type` (extend later via `ALTER TYPE ... ADD VALUE`, which needs the no-transaction path)
 - **workflow_approval_status**: `pending`, `approved`, `rejected` — pending is the only non-terminal state
 - **workflow_notification_channel**: `in-app` (single value; room to grow)
 - **secret_type** (shared type, defined elsewhere in the schema and reused by workflow_definition_secret_ref): `oauth`, `bearer_token`, `api_key`, `ssh_key`, `basic_auth`, `env_vars`

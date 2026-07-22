@@ -2,10 +2,10 @@
 type: capability
 title: "collect-result node"
 tags: [workflow-node, artifacts, session, gated, not-live, conductor-worker]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Workflow node that harvests a completed session's result artifacts for downstream workflow steps"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - internal/workers/nodes/collect_result.go
   - internal/platform/db_platform.go

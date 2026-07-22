@@ -2,10 +2,10 @@
 type: decision
 title: "Controller architecture decisions — peer index"
 tags: [controller, decisions, adr-index, thin-bridge, isolation, credentials]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "One line per controller ADR, stated as the consequence for a peer repo; full ADRs live in docs/dev/decisions/."
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - docs/dev/decisions/controller-thin-bridge.md
   - docs/dev/decisions/relay-pipeline-pattern.md
@@ -18,6 +18,7 @@ evidence:
   - docs/dev/decisions/bootstrap-pod-docker-socket-mount.md
   - docs/dev/decisions/codex-api-key-controller-held-container-env.md
   - docs/dev/decisions/a2a-metadata-fields-survive-passthrough.md
+  - docs/dev/decisions/pin-claude-cli-version.md
 ---
 
 # Controller architecture decisions — peer index
@@ -70,7 +71,13 @@ rule, examples, and rationale. This index never restates the ADR body.
   ChatGPT-subscription `auth.json` written by the runtime); the orchestrator is not in
   the Codex credential path.
 
-- **a2a-metadata-fields-survive-passthrough.md** — Metadata survives the controller only
-  as explicitly-named fields on its typed `Metadata` struct; any new required cross-hop
-  metadata key (e.g. a2a `to_project`) must be added there or it is silently dropped —
-  a coordinated runtime + controller + orchestrator change.
+- **a2a-metadata-fields-survive-passthrough.md** — *(now advisory — the code added the
+  serde-flatten catch-all this ADR anticipated.)* Unknown metadata keys now survive the
+  controller **verbatim**, so a new cross-hop metadata key (e.g. a2a `to_session` /
+  `to_project`) is **zero-controller-change**; it is no longer silently dropped. Keys the
+  controller explicitly models stay typed and are never duplicated into the catch-all.
+
+- **pin-claude-cli-version.md** — Internal operational pin: the coding-agent runtime image
+  installs the Claude Code CLI at a fixed version (not `latest`) because some later patches
+  hang `claude --print` in a headless sandbox. No peer-facing wire/contract impact; relevant
+  only when debugging a coding-agent turn that never returns inside a controller-launched runtime.

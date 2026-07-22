@@ -2,18 +2,18 @@
 type: capability
 title: "Platform-Smith file materialisation (.platform-smith/ batch delivery)"
 tags: [file-delivery, platform-smith-dir, path-confinement, relaunch, sanitised-errors]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "materialise_platformsmith_files: writes an orchestrator-supplied file batch strictly inside <clone_path>/.platform-smith/, ACKing _complete{files_written} or a sanitised _failed"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/router/handlers.rs
   - src/core/protocol/payload.rs
   - docs/dev/decisions/dockerfile-platformsmith-naming.md
 see_also:
-  - {repo: runtime, capability: "agent-config-and-secret-materialisation", intent: "the separate spawn-inline seam that delivers agent_files/secret_files at session spawn — a different channel with different confinement roots"}
-  - {repo: runtime, capability: "git-clone-checkout-or-create", intent: "produces the clone this capability writes into; the orchestrator triggers materialisation from that flow's completion event"}
-  - {repo: runtime, capability: "in-pod-image-build", intent: "the build the orchestrator dispatches AFTER the materialisation ACK — materialisation itself never starts a build"}
+  - {repo: runtime, capability: "Agent-config and secret file materialisation", descriptive: false, intent: "the separate spawn-inline seam that delivers agent_files/secret_files at session spawn — a different channel with different confinement roots"}
+  - {repo: runtime, capability: "Git clone with checkout-or-create branch resolution", descriptive: false, intent: "produces the clone this capability writes into; the orchestrator triggers materialisation from that flow's completion event"}
+  - {repo: runtime, capability: "In-pod image build (builder mode)", descriptive: false, intent: "the build the orchestrator dispatches AFTER the materialisation ACK — materialisation itself never starts a build"}
 ---
 
 # Platform-Smith file materialisation

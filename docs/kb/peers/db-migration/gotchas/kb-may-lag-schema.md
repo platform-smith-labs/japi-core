@@ -2,10 +2,10 @@
 type: gotcha
 title: "This KB may lag the live schema — check the last-synced marker first"
 tags: [freshness, staleness, schema, kb]
-timestamp: 2026-07-07T01:10:52Z
+timestamp: 2026-07-09T10:39:10Z
 description: "The schema changes rapidly; the KB reflects it only up to the last-synced commit in log.md — newer migrations (including whole new tables) are absent until regeneration"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - docs/kb/log.md
   - migrations/

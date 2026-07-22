@@ -2,16 +2,17 @@
 type: interface
 title: "Controller WebSocket protocol"
 tags: [websocket, protocol, commands, events, controller]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "The runtime's single wire interface: 3-tier JSON envelopes, the closed inbound command set, and every outbound event a peer must handle"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/protocol/envelope.rs
   - src/core/protocol/command.rs
   - src/core/protocol/payload.rs
   - src/core/router/mod.rs
   - src/core/router/handlers.rs
+  - src/core/router/seen_deliveries.rs
   - src/websocket/client.rs
   - src/session/io.rs
   - src/session/monitor.rs
@@ -116,17 +117,27 @@ error_message?}` — all builder-mode only (the `build_image` event stream); eac
   by `agent_tool_result {success, result?, error?}` matching `metadata.request_id`. 30s timeout,
   **no auto-retry**; the agent sees the timeout/error as the tool result.
 - `a2a_message` → answered by `a2a_result {accepted, message_id?, seq?, error?}` — a
-  **durability ack** (orchestrator persisted it), NOT a peer reply. Inbound peer messages arrive
-  separately as `a2a_deliver` (metadata `session_id` targets the live session; `body` in `data`)
-  and are surfaced into that session as user input.
+  **durability ack** (orchestrator persisted it), NOT a peer reply. Outbound `metadata` may carry an
+  optional `to_session` (a destination session **name**, present only when the sender set it;
+  resolved/validated by the orchestrator, not the runtime). Inbound peer messages arrive
+  separately as `a2a_deliver` (metadata `session_id` targets the live session, `message_id` is the
+  dedup + receipt key; `body` in `data`) and are surfaced into that session as user input.
+- `a2a_delivered {status:"delivered"|"failed", error?}` (metadata `message_id` + `session_id` name)
+  — the runtime's **delivery-outcome ack** for an inbound `a2a_deliver`, emitted once the body is
+  handed to the target session (`delivered`) or on a genuine miss (`failed`). Runtime-initiated, no
+  reply awaited. Distinct from `a2a_result` (that acks *durability* of an outbound send). Suppressed
+  when the inbound `a2a_deliver` carried no `message_id` (degrade-safe) or had no correlatable
+  `session_id`. A redelivery of an already-`delivered` `(message_id, session)` re-acks `delivered`
+  idempotently (the runtime dedups so a session is never double-injected).
 
 ## Failure postures (deliberately asymmetric)
 
 - **Command path**: unknown command → `error_response("Unknown command: X")`.
 - **Message path**: unknown or malformed input (bad `request_id`, unknown session, orphan reply,
   missing fields) is **silently ignored / warn-and-drop** — never a response envelope.
-  `a2a_deliver` misses leave the message pending on the orchestrator side; no error reaches the
-  sender via the runtime.
+  Exception: an `a2a_deliver` miss now emits an outbound `a2a_delivered{status:"failed"}` ack when
+  the inbound carried a `message_id` (terminal signal for the orchestrator's receipt row), so it is
+  no longer left merely pending; still, no error reaches the *sender* via the runtime.
 - Outbound WS uses a bounded non-blocking channel: on saturation a message is **dropped**, never
   blocks. Session stdin and Codex mid-turn queues are bounded at 100.
 - Secrets (tokens, credential payloads, auth bundles) are written/forwarded but never logged or

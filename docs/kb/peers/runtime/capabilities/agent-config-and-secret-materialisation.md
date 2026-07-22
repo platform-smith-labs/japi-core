@@ -2,16 +2,16 @@
 type: capability
 title: "Agent-config and secret file materialisation"
 tags: [agent-config, secrets, spawn, file-delivery, path-confinement, symlink-guard]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Spawn-inline delivery of agent_files and secret_files into the pod before the coding-agent process execs — all-or-nothing, path-confined, symlink-guarded"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/router/handlers.rs
   - src/util/fs.rs
   - docs/dev/decisions/agent-config-inline-delivery-over-relay.md
 see_also:
-  - {repo: runtime, capability: "coding-agent-sessions", intent: "the spawn this delivery is inlined into; a materialise failure surfaces as that session's claude_session_failed"}
+  - {repo: runtime, capability: "Coding-agent sessions (Claude + Codex)", descriptive: false, intent: "the spawn this delivery is inlined into; a materialise failure surfaces as that session's claude_session_failed"}
   - {repo: orchestrator, capability: "Interactive session management", intent: "the peer that composes the spawn payload carrying agent_files/secret_files"}
 ---
 

@@ -2,10 +2,10 @@
 type: capability
 title: "Async session→task completion bridge"
 tags: [conductor, sessions, async-completion, idempotency, multi-tenant]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Completes a parked Conductor task when a runtime coding session reports turn-completion or close"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - cmd/handlers/session_events.go
   - internal/session/store.go

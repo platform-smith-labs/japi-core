@@ -2,10 +2,10 @@
 type: overview
 title: "Platform Smith Runtime — the in-pod execution engine (PID 1)"
 tags: [runtime, pid1, executor, websocket, coding-agent]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "What the runtime is and its role for peer repos: the Rust executor that runs as PID 1 in every Platform Smith pod"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/main.rs
   - src/lib.rs

@@ -2,10 +2,10 @@
 type: decision
 title: "Runtime ADR registry — peer-facing consequences"
 tags: [adr, mcp, credentials, builder, git, pid1, wire-contracts]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "One line per load-bearing runtime architecture decision, phrased as what it means for a peer repo; full text lives in this repo's docs/dev/decisions/"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - docs/dev/decisions/mcp-transport-http-sse.md
   - docs/dev/decisions/codex-mcp-transport.md

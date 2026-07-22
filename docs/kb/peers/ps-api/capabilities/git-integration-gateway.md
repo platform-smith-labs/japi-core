@@ -2,10 +2,10 @@
 type: capability
 title: "Git integration gateway"
 tags: [git, github-app, oauth, connections, project-git-link, gateway]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "GitHub App connection lifecycle (install, callback, grants) and project↔repo linking, fronted by the gateway"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/handlers/git.go
   - cmd/handlers/project_git_link.go

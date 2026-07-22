@@ -2,10 +2,10 @@
 type: interface
 title: "Uplink: controller ⇄ orchestrator (WS 9003)"
 tags: [websocket, orchestrator, uplink, command-catalog, launch-family]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Inbound action catalog the orchestrator sends the controller, and what the controller sends back upstream"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/protocol/commands.rs
   - src/orchestrator/executor.rs
@@ -110,7 +110,9 @@ default reply timeout is `CONTROLLER_COMMAND_TIMEOUT_SECS` (300s).
 - **forwarded runtime events** — every runtime→controller message (see
   `downlink-runtime.md`) is enriched with `runtime_name` + `instance_uuid` in
   metadata and forwarded up. Unrecognized runtime messages are forwarded too
-  (generic passthrough), never dropped.
+  (generic passthrough), never dropped; unknown metadata keys ride through
+  verbatim as well (see context.md), so a peer adding a cross-hop metadata field
+  needs no controller change.
 
 ## Gotchas
 - **Launch-family is event-driven, not request/response.** A peer that waits for

@@ -2,10 +2,10 @@
 type: context
 title: "Controller system context and ubiquitous facts"
 tags: [context, websocket, ports, auth, container-naming, protocol, secrets]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "The controller's two WebSocket surfaces, auth/naming/label contracts, message envelope, and secret handling — stated once for the whole KB"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/main.rs
   - src/config.rs
@@ -84,6 +84,13 @@ All WebSocket messages share one shape:
 **Identity keys flow in `metadata`**: `runtime_name` (routing — which runtime a
 message is to/from) and `instance_uuid` (the specific runtime instance, preserved
 when forwarding upstream). `task_id`/`request_id` correlate a reply to its request.
+
+**Unknown metadata keys are forwarded verbatim.** The controller models only the
+metadata keys it reads or injects; every other key it does not recognize is
+preserved and re-emitted unchanged on each forward hop (a serde catch-all). So a
+peer that adds a new metadata field on a runtime-originated command (e.g.
+`to_session`) needs **no** controller change for it to reach the orchestrator —
+this holds for metadata just as blind-forward holds for the payload `data`.
 
 ## Secrets are forwarded verbatim and never logged
 

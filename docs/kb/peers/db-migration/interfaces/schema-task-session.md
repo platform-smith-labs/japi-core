@@ -2,10 +2,10 @@
 type: interface
 title: "Schema: task + session"
 tags: [schema, postgres, task, session]
-timestamp: 2026-07-07T01:02:42Z
+timestamp: 2026-07-09T10:37:36Z
 description: "Final-state reference for task, session and correlation tables"
 repo: db-migration
-commit_sha: 455ca0a
+commit_sha: a9ad8ea
 evidence:
   - migrations/0013_task.sql
   - migrations/0014_session.sql
@@ -20,6 +20,7 @@ evidence:
   - migrations/0035_session_task_correlation_lifecycle_kinds.sql
   - migrations/0041_session_integration_connection.sql
   - migrations/0043_session_add_conversation_id.sql
+  - migrations/0056_b2_primary_session_routing.sql
   - migrations/0001_enums.sql
 provides_interfaces:
   - {name: "task/session tables", kind: postgres-schema, intent: "tasks, coding-agent sessions, session events and task-session correlation"}
@@ -90,6 +91,7 @@ A coding-agent (or shell) session running inside a runtime instance; identity is
 | runtime_name | TEXT | no | — |
 | display_name | TEXT | no | — |
 | session_type | TEXT | no | 'claude' |
+| session_role | TEXT | no | 'primary' |
 | state | TEXT | no | 'pending' |
 | pid | INTEGER | yes | — |
 | model | TEXT | yes | — |
@@ -105,9 +107,9 @@ A coding-agent (or shell) session running inside a runtime instance; identity is
 | started_at | TIMESTAMPTZ | yes | — |
 | closed_at | TIMESTAMPTZ | yes | — |
 
-Semantics: `coding_agent_type` is the harness frozen at spawn (NULL = shell/legacy, consumers default to claude_code); `agent_session_id` is an opaque agent-native resume token; `integration_connection_id` is the credential that authenticated the session, frozen at first insert (NULL = legacy/static key); `is_personal_integration` is denormalized at spawn to gate message/continue to the owner; `conversation_id` binds the session to a conversation (nullable — most sessions have none).
+Semantics: `coding_agent_type` is the harness frozen at spawn (NULL = shell/legacy, consumers default to claude_code); `agent_session_id` is an opaque agent-native resume token; `integration_connection_id` is the credential that authenticated the session, frozen at first insert (NULL = legacy/static key); `is_personal_integration` is denormalized at spawn to gate message/continue to the owner; `conversation_id` binds the session to a conversation (nullable — most sessions have none). `session_role` (B2 routing) is the per-session write-convention role: `primary` (default — full posture/grants; every existing and non-B2 session) or `secondary` (read-only judge/aux session — the orchestrator omits write tools and the runtime applies a read-only CLI posture).
 
-**Constraints:** PK `session_id`; `session_uuid` UNIQUE. FKs: `company_id` → company; composite `(company_id, user_id)` → users; composite `(company_id, runtime_instance_id)` → runtime_instance; composite `(company_id, integration_connection_id)` → integration_connection; composite `(company_id, conversation_id)` → conversation. Uniques: `(company_id, runtime_instance_id, session_name)` — session-name uniqueness is instance-scoped, NOT company-global; unique index `(company_id, session_id)` (composite-FK target). Checks: `state` IN (pending, started, failed, closed, crashed); `session_type` IN (claude, shell).
+**Constraints:** PK `session_id`; `session_uuid` UNIQUE. FKs: `company_id` → company; composite `(company_id, user_id)` → users; composite `(company_id, runtime_instance_id)` → runtime_instance; composite `(company_id, integration_connection_id)` → integration_connection; composite `(company_id, conversation_id)` → conversation. Uniques: `(company_id, runtime_instance_id, session_name)` — session-name uniqueness is instance-scoped, NOT company-global; unique index `(company_id, session_id)` (composite-FK target). Checks: `state` IN (pending, started, failed, closed, crashed); `session_type` IN (claude, shell); `session_role` IN (primary, secondary).
 
 **Indexes:** `(company_id)`; `(company_id, state)`; `(company_id, runtime_name)`; `(created_at DESC)`; `(company_id, runtime_instance_id)` WHERE runtime_instance_id IS NOT NULL; `(company_id, session_type)`; UNIQUE `(company_id, session_id)`; `(company_id, conversation_id)` WHERE conversation_id IS NOT NULL.
 
@@ -162,4 +164,4 @@ Semantics: `kind` says how a parked row completes — session_close (inbound clo
 - **coding_agent_type**: `claude_code`, `codex_cli`, `cursor_cli`, `opencode`, `gemini_cli` (shared with the agent-definition tables).
 - **session_task_correlation_status**: `open`, `completed`, `failed`.
 
-Note: `task.type`, `task.status`, `session.state`, `session.session_type`, and `session_task_correlation.kind` are TEXT columns constrained by CHECK, not PostgreSQL enums; their value sets are listed under each table's constraints above.
+Note: `task.type`, `task.status`, `session.state`, `session.session_type`, `session.session_role`, and `session_task_correlation.kind` are TEXT columns constrained by CHECK, not PostgreSQL enums; their value sets are listed under each table's constraints above.

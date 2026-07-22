@@ -2,14 +2,15 @@
 type: overview
 title: "ps-api — API gateway / auth proxy for the frontend"
 tags: [gateway, auth, proxy, ps-api]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "What ps-api is and its role between the browser frontend and the Platform Smith backend"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/server/main.go
   - cmd/handlers/passthrough.go
   - cmd/handlers/middleware.go
+  - cmd/handlers/workflow_definitions.go
   - cmd/models/README.md
 ---
 
@@ -28,11 +29,13 @@ Its job is threefold:
 2. **Serve reads (and some writes) directly from the database.** Most list/detail
    endpoints query the shared platform PostgreSQL database directly,
    always scoped to the caller's company.
-3. **Proxy mutations to the orchestrator.** Most state-changing operations are
-   forwarded to the orchestrator over HTTP, with the validated identity injected
-   as trusted gateway headers (see context: gateway trust contract). Proxying
-   comes in three flavors — raw passthrough, verbatim relay, and typed proxy
-   (see glossary).
+3. **Proxy to backend services.** Most state-changing operations are forwarded over
+   HTTP with the validated identity injected as trusted gateway headers (see
+   context: gateway trust contract). There are **two proxy targets**: the
+   **orchestrator** (runtimes, sessions, launches, most mutations) and
+   **ps-workflow** (the workflow engine — definitions, executions, approvals,
+   inbox), which ps-api fronts by relaying requests verbatim. Proxying comes in
+   three flavors — raw passthrough, verbatim relay, and typed proxy (see glossary).
 
 It also serves real-time surfaces (session/launch SSE streams, a terminal
 WebSocket) and hosts the Slack connector, which acts as a second trusted gateway

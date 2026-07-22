@@ -2,10 +2,10 @@
 type: glossary
 title: "Runtime domain glossary"
 tags: [runtime, glossary, terminology]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Domain terms a peer repo needs to reason about the runtime"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/config.rs
   - src/runtime_state.rs
@@ -13,6 +13,7 @@ evidence:
   - src/core/protocol/envelope.rs
   - src/core/router/mod.rs
   - src/core/router/handlers.rs
+  - src/core/router/seen_deliveries.rs
   - src/session/types.rs
   - src/session/io.rs
   - src/mcp_server/tool_seeds.rs
@@ -56,9 +57,10 @@ spawns a fresh process. Conversation continuity is the orchestrator's job (it re
 itself is never readiness.
 
 **fire-and-forget command** — a command family with no success reply by design (e.g.
-`claude_session_input`, `setup_codex_credentials`/`setup_coding_agent_credential`,
-`a2a_deliver`; the legacy `setup_claude_credentials` is the exception — it replies). Success is
-observed via later effects (streamed output, agent behaviour), not an ack.
+`claude_session_input`, `setup_codex_credentials`/`setup_coding_agent_credential`; the legacy
+`setup_claude_credentials` is the exception — it replies). Success is observed via later effects
+(streamed output, agent behaviour), not an ack. (`a2a_deliver` was formerly in this family but now
+emits a separate `a2a_delivered` outcome ack — see the **A2A** term.)
 
 **correlated reply** — an outbound `type:"message"` carrying the inbound command's `request_id`
 so the sender can match response to request; the counterpart of fire-and-forget.
@@ -68,8 +70,11 @@ controller without being interpreted (note: the controller's envelope-metadata a
 unknown metadata fields — payload `data` passes through verbatim).
 
 **A2A** — agent-to-agent messaging: a session sends via the `a2a_send` MCP tool (acked only for
-**durability** — the orchestrator persisted it, not that the peer replied) and receives via
-`a2a_deliver` into a live session (warn-and-drop if none).
+**durability** — the orchestrator persisted it, not that the peer replied; an optional `to_session`
+targets a specific destination session by name) and receives via `a2a_deliver` into a live session.
+Inbound delivery is **dedup-guarded** on `(message_id, session name)` and **delivery-acked** back to
+the orchestrator via `a2a_delivered` (`delivered`/`failed`); a delivery with no `message_id` on the
+wire stays silent (degrade-safe).
 
 **MCP tool seed** — the per-session set of granted tools delivered in the session spawn payload
 and served by the in-pod MCP server for that session_uuid; in-memory, empty at process start.

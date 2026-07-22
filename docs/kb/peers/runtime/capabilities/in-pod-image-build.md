@@ -2,10 +2,10 @@
 type: capability
 title: "In-pod image build (builder mode)"
 tags: [builder, build-image, docker-build, launch-pipeline, unified-launch]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Builder-mode build_image: in-pod docker build with strictly ordered launch_* events and a single-build-per-pod invariant"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/router/handlers.rs
   - src/core/router/mod.rs

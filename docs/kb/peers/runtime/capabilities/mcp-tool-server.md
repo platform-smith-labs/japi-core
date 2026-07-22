@@ -2,10 +2,10 @@
 type: capability
 title: "In-pod MCP tool server"
 tags: [mcp, tools, agent-tool-call, spawn-seed, claude, codex, loopback]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Loopback-only MCP HTTP server at 127.0.0.1:9099/mcp: per-session seeded tools/list, generic tools/call forwarded to the orchestrator over the controller WS"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/mcp_server/mod.rs
   - src/mcp_server/tools.rs
@@ -15,8 +15,8 @@ evidence:
   - src/session/claude/mcp_config.rs
   - src/session/codex/mcp_config.rs
 see_also:
-  - {repo: runtime, capability: "A2A peer messaging (in-pod endpoints)", intent: "a2a_send is the one tool dispatched in-runtime instead of through this forwarder"}
-  - {repo: runtime, capability: "Controller WebSocket link", intent: "the transport every bridged tool call rides; its drop/reconnect semantics apply"}
+  - {repo: runtime, capability: "A2A peer messaging (in-pod endpoints)", descriptive: false, intent: "a2a_send is the one tool dispatched in-runtime instead of through this forwarder"}
+  - {repo: runtime, capability: "Controller WebSocket link", descriptive: false, intent: "the transport every bridged tool call rides; its drop/reconnect semantics apply"}
   - {repo: orchestrator, capability: "Agent tool-call dispatch and grant enforcement", intent: "computes the per-session granted_tools spawn-seed and is the authoritative enforce-on-call gate answering agent_tool_call"}
 ---
 

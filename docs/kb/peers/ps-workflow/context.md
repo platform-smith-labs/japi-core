@@ -2,16 +2,21 @@
 type: context
 title: "ps-workflow — system context & ubiquitous data facts"
 tags: [context, multi-tenancy, auth, conductor, orchestrator, shared-db]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Who ps-workflow talks to, and the tenancy/auth/data facts stated once so no capability repeats them"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - internal/tenant/proxy.go
   - internal/platform/platform.go
   - cmd/handlers/middleware.go
   - cmd/handlers/workflow_executions.go
   - cmd/handlers/session_events.go
+  - internal/signal/pg_store.go
+  - internal/scheduler/scheduler.go
+  - internal/runcontext/store.go
+  - cmd/handlers/signals.go
+  - cmd/handlers/webhooks.go
   - docs/dev/decisions/ps-workflow-reads-db-direct-no-ps-api.md
   - docs/dev/decisions/workflow-nodes-need-user-uuid-for-orchestrator-calls.md
   - docs/dev/decisions/correlation-store-keys-on-company-id.md
@@ -47,6 +52,12 @@ never from the request body (a body-supplied tenant is at most advisory and must
 authenticated `user_uuid` is stamped into `input._ps.user_uuid` at execution start so workers can
 replay the originating identity on outbound calls.
 
+**System-originated executions.** Some executions start with **no user identity** — a webhook trigger
+fire or a scheduled cron fire. For these the tenant comes from the stored trigger / schedule row, not
+from a caller JWT, and there is no `user_uuid` to stamp: a node that mutates via orchestrator (which
+requires `_ps.user_uuid`) cannot be used from a user-less run. Per this repo's decision, engine-executed
+**system tasks** carry no `_ps` context field at all.
+
 ## Data access — DB-direct reads, orchestrator mutations
 
 - **Reads are DB-direct.** Node read-paths (runtime status, session state, last agent message) read
@@ -62,10 +73,17 @@ replay the originating identity on outbound calls.
   An additive schema change breaks no reader, but a breaking change to a shared column fans out to
   every direct reader. **Migrations live in the `db-migration` repo**, not here.
 
-## The correlation store (async bridge state)
+## Durable park & run state (all tenant-scoped)
 
-The async bridge that completes parked Conductor tasks is backed by a **durable** sessionId→Conductor-
-task correlation store. It is keyed on the integer **`company_id`** plus the session name, matching
-the platform's tenant-table convention. It
-survives a ps-workflow restart, and a startup reconciliation sweep re-arms in-flight parks. Completion
-is idempotent and tenant-scoped: an unknown/cross-tenant session or a replay is a benign no-op.
+- **Correlation store (async bridge).** Completes parked Conductor tasks; a **durable** sessionId→
+  Conductor-task correlation keyed on the integer **`company_id`** plus session name (the platform's
+  tenant-table convention). Survives a restart; a startup reconciliation sweep re-arms in-flight parks.
+  Completion is idempotent and tenant-scoped: an unknown/cross-tenant session or a replay is a benign
+  no-op.
+- **Signal correlation store (Model B).** A durable **(company, correlation_id)** store the
+  `await-signal` node parks on and `POST /api/v1/signals` unparks. It reuses the **same exactly-once
+  completion core** as the async bridge, so unpark is idempotent and tenant-scoped exactly like a
+  session completion.
+- **Run-context sidecar.** A per-execution `workflow_run_context` row written at start-execution and
+  read back to enrich the list/get execution responses and the workflow-inbox roll-up. Tenant-scoped;
+  a cross-tenant read returns not-found.

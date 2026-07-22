@@ -2,10 +2,10 @@
 type: gotcha
 title: "Cross-cutting integrator traps"
 tags: [gateway, auth, cors, proxy, timeouts, errors]
-timestamp: 2026-07-07T03:33:49Z
+timestamp: 2026-07-09T10:35:01Z
 description: "Traps that span ps-api routes: token fallback, 404-for-both, CORS authority, write timeout, proxy flavors, error envelope"
 repo: ps-api
-commit_sha: f8157e0
+commit_sha: a4683c0
 evidence:
   - cmd/handlers/stream_auth.go
   - cmd/handlers/passthrough.go

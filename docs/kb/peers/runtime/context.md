@@ -2,10 +2,10 @@
 type: context
 title: "Runtime system context — connectivity, envelopes, modes, ubiquitous invariants"
 tags: [runtime, websocket, context, invariants, sessions, security]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "Who the runtime talks to and the ubiquitous facts stated once here, never repeated per capability"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/websocket/client.rs
   - src/utils/retry.rs

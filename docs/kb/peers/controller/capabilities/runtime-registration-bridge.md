@@ -2,10 +2,10 @@
 type: capability
 title: "Runtime registration bridge"
 tags: [registration, handshake, instance-uuid, builder, websocket, cross-repo]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "How a runtime's handshake is bound for routing and forwarded upstream enriched with the pre-minted instance/project/environment UUIDs"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/websocket/server.rs
   - src/websocket/registry.rs

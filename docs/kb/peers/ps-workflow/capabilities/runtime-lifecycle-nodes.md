@@ -2,10 +2,10 @@
 type: capability
 title: "Runtime lifecycle nodes"
 tags: [workflow, runtime, conductor-nodes, lifecycle, orchestrator]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "The runtime-start / runtime-status / runtime-stop worker nodes a workflow references to provision, read, and release a container runtime"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - internal/workers/nodes/runtime_start.go
   - internal/workers/nodes/runtime_stop.go

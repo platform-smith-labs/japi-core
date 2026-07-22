@@ -2,10 +2,10 @@
 type: capability
 title: "Terminate runtime"
 tags: [runtime-lifecycle, teardown, docker, websocket, idempotent]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "Stop and remove a named runtime container by request, with a correlated task response"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/orchestrator/executor.rs
   - src/docker/sandbox.rs

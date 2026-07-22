@@ -2,10 +2,10 @@
 type: capability
 title: "Workflow definition registry"
 tags: [workflow-definition, registry, scopes, conductor, clone-to-override, multi-tenant]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Scoped CRUD + clone + publish for workflow definitions; PS DB is canonical, Conductor is a publish-time derived cache"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - cmd/handlers/workflow_definitions.go
   - cmd/handlers/workflow_definitions_scoped.go

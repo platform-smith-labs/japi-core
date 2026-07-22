@@ -2,10 +2,10 @@
 type: capability
 title: "Human approval gate"
 tags: [workflow, approval, human-in-the-loop, park-style, durable]
-timestamp: 2026-07-07T06:49:45Z
+timestamp: 2026-07-09T10:49:10Z
 description: "Durable human-in-the-loop gate: a parked request-approval node plus the decision endpoint that resumes it"
 repo: ps-workflow
-commit_sha: 6b13ca9
+commit_sha: b1f4682
 evidence:
   - internal/workers/nodes/approval.go
   - cmd/handlers/workflow_approvals.go
@@ -14,6 +14,7 @@ evidence:
 see_also:
   - {repo: ps-ui, capability: "Approval decision UI", intent: "renders the pending gate and POSTs the human decision", descriptive: true}
   - {repo: ps-workflow, capability: "Async session→task completion bridge", intent: "sibling park-style node; both resume a parked Conductor task push-only"}
+  - {repo: ps-workflow, capability: "Signal wait & unpark (Model-B)", intent: "the generic wait-for-signal primitive that generalizes this approval-specific gate"}
 ---
 
 # Human approval gate
@@ -68,6 +69,11 @@ in-memory poller; the parked task is only ever advanced by an inbound decision c
 Conductor task runs on a detached 30s-timeout context so a client disconnect can't orphan the resume.
 
 **Gotchas.**
+- **A newer, generic wait-for-signal primitive generalizes this gate.** A Model-B signal-wait node
+  (`shape=approval`) plus `POST /api/v1/signals` covers the same human-decision pause and more
+  (agent / webhook / a2a sources); it is env-gated on some stacks. `request-approval` +
+  `POST /api/v1/workflow-approvals` remains the always-live approval path — see the sibling *Signal
+  wait & unpark (Model-B)* capability for when to prefer which.
 - `retryCount:0` (park style): the task def must not let Conductor auto-retry the parked task —
   advancement is push-only via the endpoint.
 - No built-in timeout/auto-expiry on the gate itself — it waits forever for a human decision. Any

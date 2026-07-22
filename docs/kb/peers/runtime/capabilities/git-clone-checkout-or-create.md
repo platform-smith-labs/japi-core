@@ -2,19 +2,19 @@
 type: capability
 title: "Git clone with checkout-or-create branch resolution"
 tags: [git, clone, branch-resolution, pod-manifest, expose-ports, async-completion]
-timestamp: 2026-07-06T23:40:38Z
+timestamp: 2026-07-09T10:42:29Z
 description: "setup_git_clone: N-repo background clone with 3-tier branch checkout-or-create, HEAD-SHA resolution, POD.md emission, Dockerfile EXPOSE scan, and a single async git_clone_complete event"
 repo: runtime
-commit_sha: 33f85d5
+commit_sha: 6f27e3b
 evidence:
   - src/core/router/handlers.rs
   - src/dockerfile.rs
   - src/core/protocol/payload.rs
   - docs/dev/decisions/pod-md-schema.md
 see_also:
-  - {repo: runtime, capability: "git-credential-mint-pipeline", intent: "supplies the GitHub token during clone via the in-pod credential helper — blocking-the-read-loop would deadlock this, hence the background task"}
-  - {repo: runtime, capability: "in-pod-image-build", intent: "the build the orchestrator may dispatch after seeing platform_smith_dockerfile_present=true"}
-  - {repo: runtime, capability: "platformsmith-file-materialisation", intent: "the relaunch path that re-seeds .platform-smith/ files into the clone this capability produced"}
+  - {repo: runtime, capability: "Git credential mint pipeline", descriptive: false, intent: "supplies the GitHub token during clone via the in-pod credential helper — blocking-the-read-loop would deadlock this, hence the background task"}
+  - {repo: runtime, capability: "In-pod image build (builder mode)", descriptive: false, intent: "the build the orchestrator may dispatch after seeing platform_smith_dockerfile_present=true"}
+  - {repo: runtime, capability: "Platform-Smith file materialisation (.platform-smith/ batch delivery)", descriptive: false, intent: "the relaunch path that re-seeds .platform-smith/ files into the clone this capability produced"}
 ---
 
 # Git clone with checkout-or-create branch resolution

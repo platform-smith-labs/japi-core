@@ -2,10 +2,10 @@
 type: capability
 title: "In-pod image build via builder pod"
 tags: [build, builder-pod, image, launch, docker, fire-and-forget]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-09T11:13:06Z
 description: "How the orchestrator drives a custom-image build inside a disposable builder pod and observes its outcome"
 repo: controller
-commit_sha: 3412b7d
+commit_sha: 4e237d3
 evidence:
   - src/docker/image_builder.rs
   - src/docker/sandbox.rs
