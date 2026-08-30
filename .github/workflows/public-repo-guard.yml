@@ -1,0 +1,23 @@
+name: public-repo-guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fail if internal paths are tracked
+        run: |
+          git ls-files | grep -E '^\.claude/|^CLAUDE\.md$|^docs/|^\.env|^\.mcp\.json$|^\.cursor/|^scripts/(wlog|wrender|windex|rlog|conduct-board|epic-board)\.sh$|^scripts/lib/common\.sh$|(^|/)(work-[0-9]|epic-[0-9]|relays|journal|learnings|kb)(/|$)' \
+            && { echo 'internal files present'; exit 1; } || true
+
+      - name: Fail if tracked content references internal tooling
+        run: |
+          git grep -lE 'wlog\.sh|wrender\.sh|/work work-' -- . ':!.github/workflows/public-repo-guard.yml' ':!.gitignore' \
+            && { echo 'internal tooling references present'; exit 1; } || true

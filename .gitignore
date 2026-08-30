@@ -1,0 +1,54 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+bin/
+dist/
+
+# Internal tooling — must never be committed to the public repo
+docs/
+.claude/
+CLAUDE.md
+.env
+.env.*
+*.local.md
+.mcp.json
+.cursor/
+scripts/wlog.sh
+scripts/wrender.sh
+scripts/windex.sh
+scripts/rlog.sh
+scripts/conduct-board.sh
+scripts/epic-board.sh
+scripts/lib/common.sh
+**/work-*/
+**/relays/
