@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/platform-smith-labs/japi-core/v3/core"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
 	"github.com/google/uuid"
 )
 
@@ -72,14 +73,31 @@ func adaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 			"path", r.URL.Path,
 		)
 
+		// Resolve the request ID once, here, so EVERY typed handler carries it without
+		// a per-handler middleware and without touching a single call site.
+		//
+		// The ID already existed on every request — router.NewChiRouter installs chi's
+		// middleware.RequestID — but nothing read it, so ctx.RequestID was always empty
+		// and every log line came out anonymous. Resolving it at the one place the
+		// HandlerContext is built fixes that for all handlers at once.
+		requestID := httpmiddleware.GetRequestIDFromContext(requestCtx)
+
+		// Enrich the logger rather than replacing it: everything the caller configured
+		// (handlers, attrs, groups) is preserved, with request_id added.
+		ctxLogger := logger
+		if requestID != "" {
+			ctxLogger = logger.With(slog.String("request_id", requestID))
+		}
+
 		// Create handler context with application dependencies and request context
 		ctx := HandlerContext[ParamTypeT, BodyTypeT]{
 			Context:     requestCtx, // Propagate HTTP request context
 			DB:          db,
-			Logger:      logger,
+			Logger:      ctxLogger,
 			Services:    services,
 			UserUUID:    Nil[uuid.UUID](), // No auth by default
 			CompanyUUID: Nil[uuid.UUID](), // No auth by default
+			RequestID:   requestIDNullable(requestID),
 		}
 
 		// Execute the handler and handle response/errors
@@ -117,4 +135,15 @@ func adaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Success: Response handling is now delegated to middleware (e.g., ResponseJSON)
 		// The handler chain is responsible for writing the response
 	}
+}
+
+// requestIDNullable wraps a possibly-empty request ID.
+//
+// An empty ID stays Nil rather than becoming a present-but-empty value, so
+// ctx.RequestID.HasValue() answers "do we have one?" honestly.
+func requestIDNullable(requestID string) Nullable[string] {
+	if requestID == "" {
+		return Nil[string]()
+	}
+	return NewNullable(requestID)
 }
