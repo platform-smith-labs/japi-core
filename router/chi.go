@@ -5,8 +5,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/go-chi/cors"
 	"github.com/platform-smith-labs/japi-core/v3/core"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
 )
 
 // RouterOption is a functional option that configures the Chi router's CORS settings.
@@ -29,10 +31,14 @@ type routerConfig struct {
 // set origins via WithAllowedOrigins.
 func defaultRouterConfig() routerConfig {
 	return routerConfig{
-		allowedOrigins:   []string{},
-		allowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		allowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		exposedHeaders:   []string{"Link"},
+		allowedOrigins: []string{},
+		allowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		allowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		// X-Request-ID is exposed by default because the router now sets it on every
+		// response, and a header a browser cannot read is a header that does not exist:
+		// cross-origin JS sees only CORS-safelisted headers plus whatever is named here.
+		// Without this, a single-page app could never quote the ID of a failed request.
+		exposedHeaders:   []string{"Link", "X-Request-ID"},
 		allowCredentials: false,
 		maxAge:           300,
 	}
@@ -86,6 +92,10 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	// Echo the ID chi just generated back to the caller. chi stores it in the context
+	// and writes no response header, so without this the ID exists on the server and is
+	// invisible to the client that would quote it in a support request.
+	r.Use(httpmiddleware.WithRequestIDHeader())
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{

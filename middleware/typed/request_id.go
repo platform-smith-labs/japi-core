@@ -50,8 +50,15 @@ func WithRequestID[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Extract request ID from request context
 		requestID := httpMiddleware.GetRequestID(r)
 
-		// Store request ID in HandlerContext if present
-		if requestID != "" {
+		// Store request ID in HandlerContext if present.
+		//
+		// The adapter now resolves the request ID for EVERY typed handler, so in the
+		// normal case ctx.RequestID is already set by the time this runs and this
+		// middleware has nothing to add. Re-enriching would append a second
+		// request_id attribute and emit the key twice in one log line, so skip when
+		// the value is already there. This middleware remains useful for a handler
+		// chain built without the adapter, and harmless everywhere else.
+		if requestID != "" && !ctx.RequestID.HasValue() {
 			ctx.RequestID = handler.NewNullable(requestID)
 
 			// Enrich logger with request ID for structured logging
