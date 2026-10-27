@@ -31,6 +31,13 @@ type Config struct {
 	// are never recorded; see otel.WrapDriver for the recorded attributes.
 	// When false (the default) the pgx driver is used unwrapped.
 	Tracing bool
+
+	// TracingRequireParent, with Tracing, starts a database span only when
+	// the statement's context already carries a valid span (a request, a
+	// traced job), so untraced background work does not create root traces
+	// of single queries. Durations are still recorded. See
+	// otel.SQLRequireParentSpan.
+	TracingRequireParent bool
 }
 
 // Connect establishes a database connection with the given configuration
@@ -94,7 +101,7 @@ func openConnector(config Config, dsn string) (driver.Connector, error) {
 		return nil, err
 	}
 	if config.Tracing {
-		return sqltrace.WrapConnector(connector, sqltrace.Options{}), nil
+		return sqltrace.WrapConnector(connector, sqltrace.Options{RequireParent: config.TracingRequireParent}), nil
 	}
 	return connector, nil
 }

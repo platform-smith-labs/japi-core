@@ -90,7 +90,9 @@ func WithMaxAge(seconds int) RouterOption {
 // installed a tracer provider; until then the middleware is effectively free.
 //
 // The tracing middleware is installed right after RequestID/RealIP and before
-// Recoverer, so a recovered panic is seen as a 500 on the span. Middleware the
+// Recoverer, so a recovered panic is seen as a 500 on the span (status Error
+// "panic"). With tracing on, X-Request-ID on every response is the trace ID
+// (see otel.RequestIDFromTrace). Middleware the
 // caller adds afterwards with r.Use (logging, metrics.EnablePrometheusMetrics)
 // runs inside the span, so its log lines and exemplars can carry the trace ID.
 //
@@ -121,8 +123,14 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 	r.Use(middleware.RealIP)
 	if cfg.tracing != nil {
 		r.Use(cfg.tracing)
+		// From here on the request ID is the trace ID (response header and
+		// context), so the ID a client quotes finds the trace.
+		r.Use(otel.RequestIDFromTrace())
 	}
-	r.Use(middleware.Recoverer)
+	// Inside the span: a panic becomes the generic 500 Problem Details body
+	// with trace_id; the span and one log line get the type and stack, never
+	// the panic value.
+	r.Use(otel.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.allowedOrigins,
 		AllowedMethods:   cfg.allowedMethods,

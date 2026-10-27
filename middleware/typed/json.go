@@ -2,6 +2,7 @@ package typed
 
 import (
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -34,19 +35,19 @@ func ParseJSON[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.Ha
 		// Parse multipart form data (32MB max)
 		err := r.ParseMultipartForm(32 << 20)
 		if err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Failed to parse multipart form", err.Error())
+			return zeroResponse, multipartProblem(err)
 		}
 
 		// Get the uploaded file
 		file, fileHeader, err := r.FormFile("file")
 		if err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Missing or invalid 'file' field in form data")
+			return zeroResponse, core.BadRequest(core.CodeBadRequest, "The form must carry the upload in a 'file' field.").WithCause(err)
 		}
 		defer file.Close()
 
 		// Validate file type (JSON)
 		if !isJSONFile(fileHeader) {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "File must be a JSON file (.json)")
+			return zeroResponse, core.NewProblem(core.CodeUnsupportedMediaType, http.StatusUnsupportedMediaType, "The file must be a JSON file (.json).")
 		}
 
 		// Parse JSON file
@@ -54,12 +55,13 @@ func ParseJSON[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.Ha
 		decoder := json.NewDecoder(file)
 		err = decoder.Decode(&jsonData)
 		if err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Failed to parse JSON file", err.Error())
+			// The decoder's message can quote the file: log only.
+			return zeroResponse, core.BadRequest(core.CodeInvalidJSON, "The file is not valid JSON.").WithCause(err)
 		}
 
 		// Validate parsed JSON data using the global validator instance
 		if err := validate.Struct(jsonData); err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "JSON validation failed", err.Error())
+			return zeroResponse, core.Validation(fieldErrors(err, true)...).WithCause(err)
 		}
 
 		// Set parsed JSON data in context
@@ -72,4 +74,19 @@ func ParseJSON[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.Ha
 // isJSONFile checks if the uploaded file is a JSON file
 func isJSONFile(fileHeader *multipart.FileHeader) bool {
 	return strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".json")
+}
+
+// multipartProblem classifies a ParseMultipartForm failure with a fixed
+// detail; the parser's own text goes to the log only.
+func multipartProblem(err error) *core.Problem {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
+		return core.NewProblem(core.CodeFileTooLarge, http.StatusRequestEntityTooLarge,
+			"The upload is too large.").WithCause(err)
+	}
+	if errors.Is(err, http.ErrNotMultipart) {
+		return core.NewProblem(core.CodeUnsupportedMediaType, http.StatusUnsupportedMediaType,
+			"The request must be multipart/form-data.").WithCause(err)
+	}
+	return core.BadRequest(core.CodeBadRequest, "The request is not valid multipart form data.").WithCause(err)
 }

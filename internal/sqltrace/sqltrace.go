@@ -36,6 +36,11 @@ var durationBuckets = []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10}
 type Options struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	// RequireParent starts a span only when the operation's context already
+	// carries a valid span (a request, a job), so connection-pool upkeep and
+	// untraced background work do not each become a root trace. The
+	// duration histogram is recorded either way.
+	RequireParent bool
 }
 
 // tracer holds the instrumentation state shared by everything a wrapped
@@ -83,6 +88,11 @@ type op struct {
 func (t *tracer) begin(ctx context.Context, operation, summary string) *op {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if t.opts.RequireParent && !trace.SpanContextFromContext(ctx).IsValid() {
+		// No span: the non-recording span from ctx absorbs the calls end
+		// makes.
+		return &op{t: t, ctx: ctx, span: trace.SpanFromContext(ctx), operation: operation, start: time.Now()}
 	}
 	ctx, span := t.traceProvider().Tracer(instrumentationName).Start(ctx, summary,
 		trace.WithSpanKind(trace.SpanKindClient),

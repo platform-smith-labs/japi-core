@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,5 +189,74 @@ func TestJSONPointer(t *testing.T) {
 		if got := jsonPointer(in); got != want {
 			t.Errorf("jsonPointer(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+type csvRow struct {
+	Name  string `csv:"name" validate:"required"`
+	Email string `csv:"email" validate:"required,email"`
+}
+
+// upload builds a multipart request carrying content as the "file" field.
+func upload(t *testing.T, filename, content string) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = fw.Write([]byte(content))
+	_ = mw.Close()
+	req := httptest.NewRequest(http.MethodPost, "/", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	return req
+}
+
+func TestUploadErrorsHaveFixedDetails(t *testing.T) {
+	setBase(t)
+	csvH := handler.AdaptHandler(nil, slog.New(slog.DiscardHandler), ParseCSV(
+		func(handler.HandlerContext[struct{}, []csvRow], http.ResponseWriter, *http.Request) (struct{}, error) {
+			return struct{}{}, nil
+		}))
+	jsonH := handler.AdaptHandler(nil, slog.New(slog.DiscardHandler), ParseJSON(
+		func(handler.HandlerContext[struct{}, createBody], http.ResponseWriter, *http.Request) (struct{}, error) {
+			return struct{}{}, nil
+		}))
+
+	tooLarge := upload(t, "a.csv", strings.Repeat("x", 4096))
+	tooLarge.Body = http.MaxBytesReader(httptest.NewRecorder(), tooLarge.Body, 64)
+
+	notMultipart := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(marker))
+	notMultipart.Header.Set("Content-Type", "text/plain")
+
+	tests := []struct {
+		name   string
+		h      http.HandlerFunc
+		req    *http.Request
+		status int
+		code   string
+	}{
+		{"csv wrong extension", csvH, upload(t, "a.txt", "name,email\n"), 415, "unsupported_media_type"},
+		{"csv malformed", csvH, upload(t, "a.csv", "name,email\n\"unterminated "+marker+"\n"), 400, "invalid_csv"},
+		{"csv empty", csvH, upload(t, "a.csv", "name,email\n"), 400, "invalid_csv"},
+		{"csv row invalid", csvH, upload(t, "a.csv", "name,email\nbob,"+marker+"\n"), 422, "validation_failed"},
+		{"too large", csvH, tooLarge, 413, "file_too_large"},
+		{"not multipart", csvH, notMultipart, 415, "unsupported_media_type"},
+		{"json malformed", jsonH, upload(t, "a.json", `{"name": `+marker), 400, "invalid_json"},
+		{"json wrong extension", jsonH, upload(t, "a.csv", `{}`), 415, "unsupported_media_type"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			tt.h(rec, tt.req)
+			body := problemOf(t, rec)
+			if rec.Code != tt.status || body["type"] != "https://errors.example.test/"+tt.code {
+				t.Fatalf("got %d %v", rec.Code, body)
+			}
+			if strings.Contains(rec.Body.String(), marker) {
+				t.Fatalf("upload content echoed: %s", rec.Body.String())
+			}
+		})
 	}
 }

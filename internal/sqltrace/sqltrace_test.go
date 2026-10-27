@@ -297,3 +297,52 @@ func TestErrSkip_NotCountedAsFailureOrTwice(t *testing.T) {
 		t.Errorf("duration measurements = %d, want 2 (one per statement)", points)
 	}
 }
+
+func TestRequireParent_SpansOnlyUnderAValidSpan(t *testing.T) {
+	opts, sr, reader := newRecorders(t)
+	opts.RequireParent = true
+	db := sql.OpenDB(WrapConnector(fakeConnector{}, opts))
+	defer db.Close()
+
+	// No span in the context: timed, not traced.
+	if _, err := db.ExecContext(context.Background(), "DELETE FROM sessions"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(sr.Ended()); n != 0 {
+		t.Fatalf("got %d spans without a parent, want 0", n)
+	}
+
+	// Under a span: traced as its child.
+	ctx, parent := opts.TracerProvider.Tracer("test").Start(context.Background(), "job")
+	if _, err := db.ExecContext(ctx, "DELETE FROM sessions"); err != nil {
+		t.Fatal(err)
+	}
+	parent.End()
+	var child sdktrace.ReadOnlySpan
+	for _, s := range sr.Ended() {
+		if s.Name() == "DELETE sessions" {
+			child = s
+		}
+	}
+	if child == nil || child.Parent().SpanID() != parent.SpanContext().SpanID() {
+		t.Fatalf("no child span under the parent: %v", sr.Ended())
+	}
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	var count uint64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == "db.client.operation.duration" {
+				for _, dp := range m.Data.(metricdata.Histogram[float64]).DataPoints {
+					count += dp.Count
+				}
+			}
+		}
+	}
+	if count != 2 {
+		t.Fatalf("duration count = %d, want 2 (both operations timed)", count)
+	}
+}

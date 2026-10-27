@@ -8,20 +8,23 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	// RequestIDHeader is the HTTP header name for request IDs
-	RequestIDHeader = "X-Request-ID"
+// RequestIDHeader is the HTTP header name for request IDs.
+const RequestIDHeader = "X-Request-ID"
 
-	// RequestIDContextKey is the context key for storing request IDs.
-	//
-	// NOTE: this is deliberately still an untyped string constant. A private key type
-	// would be the better design — a bare string shares one namespace with every other
-	// package — but changing it is a BREAKING change: callers reading
-	// ctx.Value("request_id") directly would silently get nil, and callers assigning
-	// this constant to a string would stop compiling. That cleanup belongs in a major
-	// version, not in a patch that consumers adopt by bumping a digit.
-	RequestIDContextKey = "request_id"
-)
+// contextKey is the type of this package's context keys, so they cannot
+// collide with a bare string key set by any other package.
+type contextKey string
+
+// RequestIDContextKey is the context key for storing request IDs. Read it
+// with GetRequestID / GetRequestIDFromContext and set it with
+// ContextWithRequestID; ctx.Value("request_id") does not match it.
+const RequestIDContextKey contextKey = "request_id"
+
+// ContextWithRequestID returns ctx carrying requestID, which GetRequestID
+// then returns in preference to chi's request ID.
+func ContextWithRequestID(ctx context.Context, requestID string) context.Context {
+	return context.WithValue(ctx, RequestIDContextKey, requestID)
+}
 
 // WithRequestID generates or propagates request IDs for correlation and tracing.
 //
@@ -64,7 +67,7 @@ func WithRequestID() func(http.Handler) http.Handler {
 			w.Header().Set(RequestIDHeader, requestID)
 
 			// Store request ID in context for downstream use
-			ctx := context.WithValue(r.Context(), RequestIDContextKey, requestID)
+			ctx := ContextWithRequestID(r.Context(), requestID)
 
 			// Continue with enriched context
 			next.ServeHTTP(w, r.WithContext(ctx))

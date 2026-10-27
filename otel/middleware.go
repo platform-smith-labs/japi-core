@@ -5,7 +5,9 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +19,9 @@ import (
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/embedded"
+
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/internal/spanstatus"
 )
 
 // UnmatchedRoute is the route used in span names, the http.route attribute and
@@ -208,6 +213,25 @@ func (h *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	orig, _ := r.Context().Value(origWriterKey{}).(http.ResponseWriter)
 	tw := &tracingWriter{ResponseWriter: w, orig: orig, span: span, req: r, status: http.StatusOK}
+
+	// A panic that reaches this point (no recovery middleware inside the
+	// span) is recorded without its value and re-raised as ErrHandlerPanic,
+	// so neither the span nor net/http's panic log carries request data.
+	defer func() {
+		p := recover()
+		if p == nil {
+			return
+		}
+		if p == http.ErrAbortHandler {
+			panic(p)
+		}
+		tw.finish()
+		recordPanic(r.Context(), p, debug.Stack())
+		if cv, ok := p.(core.ContractViolation); ok {
+			panic(cv) // tests only: keep the message
+		}
+		panic(ErrHandlerPanic)
+	}()
 
 	h.next.ServeHTTP(tw, r)
 
@@ -418,6 +442,7 @@ func (t scrubbingTracer) Start(ctx context.Context, spanName string, opts ...tra
 	// (its own attributes, errors, events) is the application's choice and
 	// is kept. routeHandler finds the filtering wrapper under serverSpanKey.
 	ctx = context.WithValue(trace.ContextWithSpan(ctx, span), serverSpanKey{}, ss)
+	ctx = spanstatus.With(ctx, ss)
 	return ctx, ss
 }
 
@@ -433,6 +458,27 @@ type serverSpan struct {
 	// be read from it later.
 	ctx    context.Context
 	method string // normalised by spanMethod
+	// pinned is set once the application (an error response, a recovered
+	// panic) has given the span its final error status; otelhttp's own
+	// status and error.type writes, made after the handler returns, are
+	// then ignored so they cannot replace it.
+	pinned atomic.Bool
+}
+
+// Pin implements spanstatus.Pinner.
+func (s *serverSpan) Pin(description, errorType string) {
+	s.pinned.Store(true)
+	s.Span.SetStatus(codes.Error, description)
+	s.Span.SetAttributes(attribute.String("error.type", errorType))
+}
+
+// End ends the span. It is a method of its own, not the promoted one, so
+// that the SDK's End is not called directly by a deferred call: otelhttp
+// ends the span with a bare defer, and an SDK End called that way recovers
+// a panic in flight and records its value as an exception event. Panics are
+// recorded by routeHandler without their value.
+func (s *serverSpan) End(opts ...trace.SpanEndOption) {
+	s.Span.End(opts...)
 }
 
 // allowed keeps the serverSpanAttributes allowlist and normalises values
@@ -442,6 +488,9 @@ func (s *serverSpan) allowed(in []attribute.KeyValue) []attribute.KeyValue {
 	out := make([]attribute.KeyValue, 0, len(in))
 	for _, kv := range in {
 		if _, ok := serverSpanAttributes[kv.Key]; !ok {
+			continue
+		}
+		if kv.Key == "error.type" && s.pinned.Load() {
 			continue
 		}
 		switch kv.Key {
@@ -471,6 +520,9 @@ func (s *serverSpan) SetName(string) {
 }
 
 func (s *serverSpan) SetStatus(code codes.Code, description string) {
+	if s.pinned.Load() {
+		return
+	}
 	if description != "" {
 		description = serverErrorDescription
 	}

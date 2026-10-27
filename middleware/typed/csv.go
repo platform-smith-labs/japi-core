@@ -36,40 +36,46 @@ func ParseCSV[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.Han
 		// Parse multipart form data (32MB max)
 		err := r.ParseMultipartForm(32 << 20)
 		if err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Failed to parse multipart form", err.Error())
+			return zeroResponse, multipartProblem(err)
 		}
 
 		// Get the uploaded file
 		file, fileHeader, err := r.FormFile("file")
 		if err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Missing or invalid 'file' field in form data")
+			return zeroResponse, core.BadRequest(core.CodeBadRequest, "The form must carry the upload in a 'file' field.").WithCause(err)
 		}
 		defer file.Close()
 
 		// Validate file type (CSV)
 		if !isCSVFile(fileHeader) {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "File must be a CSV file (.csv)")
+			return zeroResponse, core.NewProblem(core.CodeUnsupportedMediaType, http.StatusUnsupportedMediaType, "The file must be a CSV file (.csv).")
 		}
 
 		// Parse CSV file directly using gocsv
 		var csvRows BodyTypeT
 		err = gocsv.Unmarshal(file, &csvRows)
 		if err != nil {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Failed to parse CSV file", err.Error())
+			// The parser's message can quote the file: log only.
+			return zeroResponse, core.BadRequest(core.CodeInvalidCSV, "The file is not valid CSV for this import.").WithCause(err)
 		}
 
 		// Use reflection to check length and validate rows
 		csvValue := reflect.ValueOf(csvRows)
 		if csvValue.Len() == 0 {
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "CSV file is empty or contains no valid data rows")
+			return zeroResponse, core.BadRequest(core.CodeInvalidCSV, "The CSV file has no data rows.")
 		}
 
 		// Validate CSV rows using the global validator instance
 		for i := 0; i < csvValue.Len(); i++ {
 			row := csvValue.Index(i).Interface()
 			if err := validate.Struct(row); err != nil {
-				return zeroResponse, core.NewAPIError(http.StatusBadRequest,
-					fmt.Sprintf("Row %d validation failed: %s", i+2, err.Error()))
+				// One entry per failed rule, prefixed with the CSV line
+				// (header is line 1). CSV has no JSON Pointer.
+				errs := fieldErrors(err, false)
+				for j := range errs {
+					errs[j].Detail = fmt.Sprintf("line %d: %s", i+2, errs[j].Detail)
+				}
+				return zeroResponse, core.Validation(errs...).WithCause(err)
 			}
 		}
 

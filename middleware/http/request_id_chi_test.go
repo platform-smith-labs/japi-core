@@ -61,19 +61,16 @@ func TestGetRequestID_OwnMiddlewareTakesPrecedence(t *testing.T) {
 	}
 }
 
-// BACKWARD COMPATIBILITY. RequestIDContextKey is a published untyped string constant.
-// A caller may hold it in a string, and a caller may read ctx.Value("request_id")
-// directly. Changing its type would break both silently — this test is what stops that
-// happening in a patch release.
-func TestRequestIDContextKey_RemainsAPlainString(t *testing.T) {
-	var key string = japihttp.RequestIDContextKey
-	if key != "request_id" {
-		t.Fatalf("published context key changed: %q", key)
+// RequestIDContextKey is a typed key: a bare string key set by another
+// package cannot collide with it, and ContextWithRequestID round-trips.
+func TestRequestIDContextKey_IsTyped(t *testing.T) {
+	ctx := context.WithValue(context.Background(), "request_id", "bare") //nolint:staticcheck // the collision this guards against
+	if got := japihttp.GetRequestIDFromContext(ctx); got == "bare" {
+		t.Fatal("a bare string key is read as the request ID")
 	}
-
-	ctx := context.WithValue(context.Background(), japihttp.RequestIDContextKey, "abc") //nolint:staticcheck // pinning published behaviour
-	if got, _ := ctx.Value("request_id").(string); got != "abc" {
-		t.Fatal("a bare-string read of the context key no longer works — this is a breaking change")
+	ctx = japihttp.ContextWithRequestID(ctx, "abc")
+	if got := japihttp.GetRequestIDFromContext(ctx); got != "abc" {
+		t.Fatalf("got %q, want abc", got)
 	}
 }
 

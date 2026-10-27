@@ -29,14 +29,33 @@ import (
 // returns the first result, not iteration over the rows.
 //
 // The tracer and meter are the globals, resolved per operation.
-func WrapDriver(d driver.Driver) driver.Driver {
-	return sqltrace.WrapDriver(d, sqltrace.Options{})
+func WrapDriver(d driver.Driver, opts ...SQLOption) driver.Driver {
+	return sqltrace.WrapDriver(d, sqlOptions(opts))
 }
 
 // WrapConnector returns c with the tracing described at WrapDriver, for use
 // with sql.OpenDB:
 //
 //	db := sql.OpenDB(otel.WrapConnector(connector))
-func WrapConnector(c driver.Connector) driver.Connector {
-	return sqltrace.WrapConnector(c, sqltrace.Options{})
+func WrapConnector(c driver.Connector, opts ...SQLOption) driver.Connector {
+	return sqltrace.WrapConnector(c, sqlOptions(opts))
+}
+
+// SQLOption configures WrapDriver and WrapConnector.
+type SQLOption func(*sqltrace.Options)
+
+// SQLRequireParentSpan starts a database span only when the operation's
+// context already carries a valid span (an HTTP request, a traced job).
+// Operations without one (pool upkeep, untraced background loops) are timed
+// in db.client.operation.duration but start no trace of their own.
+func SQLRequireParentSpan() SQLOption {
+	return func(o *sqltrace.Options) { o.RequireParent = true }
+}
+
+func sqlOptions(opts []SQLOption) sqltrace.Options {
+	var o sqltrace.Options
+	for _, f := range opts {
+		f(&o)
+	}
+	return o
 }
