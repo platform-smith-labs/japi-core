@@ -1,23 +1,43 @@
 package core
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 )
 
-// HandlerFunc represents a handler that can return an error for cleaner composition
+// HandlerFunc is an http handler that returns an error.
+//
+// A returned error is written with WriteError: a *Problem as constructed,
+// anything else as the generic 500 internal_error problem (its text is logged,
+// never sent). A context.Canceled error (the client went away) writes nothing.
 type HandlerFunc func(w http.ResponseWriter, r *http.Request) error
 
-// ServeHTTP converts our custom HandlerFunc to standard http.Handler
+// ServeHTTP calls h and writes its error, if any.
 func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := h(w, r); err != nil {
-		handleError(w, r, err)
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		_ = WriteError(w, r, err)
 	}
 }
 
-// APIError represents a structured API error
+// WrapHandler converts a regular http.HandlerFunc to our HandlerFunc
+func WrapHandler(h http.HandlerFunc) HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		h(w, r)
+		return nil
+	}
+}
+
+// APIError is the error type of the old {"error":{...}} envelope.
+//
+// Deprecated: use *Problem (NewProblem, BadRequest, NotFound, Internal, ...).
+// Pipelines still write an APIError in the old envelope, with a 5xx reduced to
+// its status text, until the type is removed in a later major version.
 type APIError struct {
 	Code    int               `json:"code"`
 	Message string            `json:"message"`
@@ -43,7 +63,10 @@ func (e APIError) Error() string {
 	return msg
 }
 
-// NewAPIError creates a new API error
+// NewAPIError creates a new API error.
+//
+// Deprecated: use NewProblem or a status constructor (BadRequest, NotFound,
+// Internal, ...). Never pass err.Error() as a message or detail.
 func NewAPIError(code int, message string, detail ...string) *APIError {
 	err := &APIError{
 		Code:    code,
@@ -55,7 +78,9 @@ func NewAPIError(code int, message string, detail ...string) *APIError {
 	return err
 }
 
-// NewValidationError creates a new validation error with field details
+// NewValidationError creates a new validation error with field details.
+//
+// Deprecated: use Validation with FieldError values (the "errors" member).
 func NewValidationError(message string) *APIError {
 	return &APIError{
 		Code:    http.StatusBadRequest,
@@ -64,7 +89,9 @@ func NewValidationError(message string) *APIError {
 	}
 }
 
-// AddField adds a field error to the APIError and returns the error for chaining
+// AddField adds a field error to the APIError and returns the error for chaining.
+//
+// Deprecated: use Problem.WithErrors.
 func (e *APIError) AddField(fieldName, fieldError string) *APIError {
 	if e.Fields == nil {
 		e.Fields = make(map[string]string)
@@ -80,7 +107,9 @@ func (e *APIError) AddField(fieldName, fieldError string) *APIError {
 	return e
 }
 
-// Common API errors
+// Common API errors.
+//
+// Deprecated: use the Problem constructors.
 var (
 	ErrBadRequest   = &APIError{Code: http.StatusBadRequest, Message: "Bad Request"}
 	ErrUnauthorized = &APIError{Code: http.StatusUnauthorized, Message: "Unauthorized"}
@@ -88,31 +117,3 @@ var (
 	ErrNotFound     = &APIError{Code: http.StatusNotFound, Message: "Not Found"}
 	ErrInternal     = &APIError{Code: http.StatusInternalServerError, Message: "Internal Server Error"}
 )
-
-// handleError handles errors in a centralized way
-func handleError(w http.ResponseWriter, r *http.Request, err error) {
-	// Handle APIError types directly
-	if apiErr, ok := err.(*APIError); ok {
-		WriteAPIError(w, r, *apiErr)
-		return
-	}
-
-	// Handle unknown errors - convert to APIError
-	slog.Error("Unexpected error in handler",
-		"original_error", err.Error(),
-		"method", r.Method,
-		"path", r.URL.Path,
-	)
-
-	// Convert to APIError and send response
-	apiErr := NewAPIError(http.StatusInternalServerError, "Internal Server Error", err.Error())
-	WriteAPIError(w, r, *apiErr)
-}
-
-// WrapHandler converts a regular http.HandlerFunc to our HandlerFunc
-func WrapHandler(h http.HandlerFunc) HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) error {
-		h(w, r)
-		return nil
-	}
-}

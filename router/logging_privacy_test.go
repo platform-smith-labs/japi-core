@@ -208,7 +208,7 @@ func TestWriteAPIError_LogCorrelatedAndPrivate(t *testing.T) {
 	assertNoLeaks(t, out)
 	line := findLine(t, out, "API error response")
 	assertCorrelated(t, line, spans)
-	if line["http.route"] != routeWant || line["method"] != http.MethodGet {
+	if line["http.route"] != routeWant || line["http.request.method"] != http.MethodGet {
 		t.Errorf("request context wrong: %v", line)
 	}
 }
