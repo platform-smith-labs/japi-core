@@ -24,6 +24,9 @@ Module path is now `github.com/platform-smith-labs/japi-core/v4`. See
   `unsupported_media_type`, `invalid_csv`. Validation failures are now 422, not
   400. Parser and validator text goes to the log only.
 - A handler deadline is answered with 504 `timeout`.
+- The router answers unmatched paths with a `not_found` problem and unmatched
+  methods with a `method_not_allowed` problem (with `Allow`), instead of chi's
+  text/plain 404 and empty 405.
 - `router` installs `otel.Recoverer` instead of chi's Recoverer: a panic becomes
   the generic 500 problem with `trace_id`, and the panic value is never logged,
   recorded on a span or written.
