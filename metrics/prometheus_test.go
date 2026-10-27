@@ -492,3 +492,41 @@ func BenchmarkMetricsEndpoint(b *testing.B) {
 		io.Copy(io.Discard, rec.Body)
 	}
 }
+
+// TestEnablePrometheusMetrics_UnmatchedPathLabel verifies that a request
+// matching no route is labelled "unmatched", never with its raw path.
+func TestEnablePrometheusMetrics_UnmatchedPathLabel(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	r := chi.NewRouter()
+	enablePrometheusMetricsWithRegisterer(r, "/metrics", DefaultMetricsOptions(), reg)
+	r.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {})
+
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/secret/token-abc123", nil))
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+	body := rec.Body.String()
+	if strings.Contains(body, "token-abc123") {
+		t.Errorf("raw path leaked into a label: %s", body)
+	}
+	if !strings.Contains(body, `http_requests_total{method="GET",path="unmatched",status="404"} 1`) {
+		t.Errorf("want unmatched label, got: %s", body)
+	}
+}
+
+// TestResponseWriter_ResponseController verifies http.ResponseController
+// reaches the underlying writer through the metrics wrapper.
+func TestResponseWriter_ResponseController(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := &responseWriter{ResponseWriter: rec, statusCode: http.StatusOK}
+	rc := http.NewResponseController(rw)
+	if err := rc.Flush(); err != nil {
+		t.Errorf("Flush: %v", err)
+	}
+	if !rec.Flushed {
+		t.Error("underlying recorder was not flushed")
+	}
+	if _, _, err := rc.Hijack(); err == nil {
+		t.Error("Hijack on a non-hijackable writer should fail")
+	}
+}

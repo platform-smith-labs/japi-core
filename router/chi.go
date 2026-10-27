@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/platform-smith-labs/japi-core/v3/core"
 	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v3/otel"
 )
 
 // RouterOption is a functional option that configures the Chi router's CORS settings.
@@ -24,6 +25,9 @@ type routerConfig struct {
 	exposedHeaders   []string
 	allowCredentials bool
 	maxAge           int
+
+	// tracing is nil unless WithTracing was applied.
+	tracing func(http.Handler) http.Handler
 }
 
 // defaultRouterConfig returns the secure baseline CORS configuration.
@@ -81,6 +85,24 @@ func WithMaxAge(seconds int) RouterOption {
 	return func(cfg *routerConfig) { cfg.maxAge = seconds }
 }
 
+// WithTracing enables OpenTelemetry server tracing (otel.Middleware) on the
+// router. It is off by default. Spans are exported only once otelsdk.Setup (package otel/sdk) has
+// installed a tracer provider; until then the middleware is effectively free.
+//
+// The tracing middleware is installed right after RequestID/RealIP and before
+// Recoverer, so a recovered panic is seen as a 500 on the span. Middleware the
+// caller adds afterwards with r.Use (logging, metrics.EnablePrometheusMetrics)
+// runs inside the span, so its log lines and exemplars can carry the trace ID.
+//
+// Example:
+//
+//	r := router.NewChiRouterWithOptions(
+//	    router.WithTracing("my-service", otel.ExcludeFromDuration("/events")),
+//	)
+func WithTracing(service string, opts ...otel.MiddlewareOption) RouterOption {
+	return func(cfg *routerConfig) { cfg.tracing = otel.Middleware(service, opts...) }
+}
+
 // newChiRouter is the single internal constructor all public constructors delegate to.
 // It applies defaults then each option in order, constructs the chi router, and attaches
 // the standard middleware stack and CORS handler exactly once.
@@ -97,6 +119,9 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 	// invisible to the client that would quote it in a support request.
 	r.Use(httpmiddleware.WithRequestIDHeader())
 	r.Use(middleware.RealIP)
+	if cfg.tracing != nil {
+		r.Use(cfg.tracing)
+	}
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.allowedOrigins,

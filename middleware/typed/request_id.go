@@ -15,6 +15,11 @@ import (
 // - Stores it in ctx.RequestID for handler access
 // - Enriches the logger with request_id field for structured logging
 //
+// The request_id log field is only added when this middleware runs in a chain
+// built without the handler adapter. The adapter already sets ctx.RequestID
+// (and correlates log lines by trace ID instead), so in that case this
+// middleware leaves the logger unchanged.
+//
 // Dependencies: Requires http.WithRequestID middleware to be applied first
 // Context modifications: Sets ctx.RequestID, enriches ctx.Logger
 // Use: Apply via MakeHandler(..., WithRequestID, ...)
@@ -54,10 +59,10 @@ func WithRequestID[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		//
 		// The adapter now resolves the request ID for EVERY typed handler, so in the
 		// normal case ctx.RequestID is already set by the time this runs and this
-		// middleware has nothing to add. Re-enriching would append a second
-		// request_id attribute and emit the key twice in one log line, so skip when
-		// the value is already there. This middleware remains useful for a handler
-		// chain built without the adapter, and harmless everywhere else.
+		// middleware has nothing to add. The adapter correlates log lines by trace ID
+		// and deliberately keeps request_id off the logger, so skip when the value is
+		// already there. This middleware remains useful for a handler chain built
+		// without the adapter, and harmless everywhere else.
 		if requestID != "" && !ctx.RequestID.HasValue() {
 			ctx.RequestID = handler.NewNullable(requestID)
 

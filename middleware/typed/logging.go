@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/platform-smith-labs/japi-core/v3/handler"
 )
 
@@ -34,12 +36,14 @@ func WithLogging[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Capture start time
 		startTime := time.Now()
 
+		// Log the chi route pattern, never the raw path (unbounded, may carry
+		// identifiers). Client address and user agent are not logged.
+		route := routePattern(r)
+
 		// Log request
 		ctx.Logger.Info("HTTP Request",
 			"method", r.Method,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr,
-			"user_agent", r.UserAgent(),
+			"http.route", route,
 			"start_time", startTime.Format(time.RFC3339Nano),
 		)
 
@@ -52,9 +56,11 @@ func WithLogging[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 
 		// Log response
 		if err != nil {
+			// TODO: err.Error() may echo user input (e.g. a rejected value quoted
+			// by a validation or driver error); log a classification instead.
 			ctx.Logger.Error("HTTP Response Error",
 				"method", r.Method,
-				"path", r.URL.Path,
+				"http.route", route,
 				"error", err.Error(),
 				"start_time", startTime.Format(time.RFC3339Nano),
 				"end_time", endTime.Format(time.RFC3339Nano),
@@ -63,7 +69,7 @@ func WithLogging[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		} else {
 			ctx.Logger.Info("HTTP Response Success",
 				"method", r.Method,
-				"path", r.URL.Path,
+				"http.route", route,
 				"start_time", startTime.Format(time.RFC3339Nano),
 				"end_time", endTime.Format(time.RFC3339Nano),
 				"duration_ms", duration.Milliseconds(),
@@ -72,4 +78,18 @@ func WithLogging[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 
 		return response, err
 	}
+}
+
+// unmatchedRoute is logged as http.route when no chi route pattern matched.
+// It equals otel.UnmatchedRoute.
+const unmatchedRoute = "unmatched"
+
+// routePattern returns the matched chi route pattern, or unmatchedRoute.
+func routePattern(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		if p := rctx.RoutePattern(); p != "" {
+			return p
+		}
+	}
+	return unmatchedRoute
 }

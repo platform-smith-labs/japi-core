@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -181,6 +183,9 @@ func (c *Collector) middleware(next http.Handler) http.Handler {
 	})
 }
 
+// UnmatchedPath is the path label for requests that matched no chi route.
+const UnmatchedPath = "unmatched"
+
 // getRoutePattern extracts the route pattern from chi's route context
 // This normalizes paths like "/users/123" to "/users/{id}" to prevent metric cardinality explosion
 func getRoutePattern(r *http.Request) string {
@@ -188,8 +193,9 @@ func getRoutePattern(r *http.Request) string {
 	if rctx != nil && rctx.RoutePattern() != "" {
 		return rctx.RoutePattern()
 	}
-	// Fallback to actual path if route pattern not available
-	return r.URL.Path
+	// Never fall back to the raw URL path: it is unbounded (any client can
+	// mint new label values by probing paths) and may contain identifiers.
+	return UnmatchedPath
 }
 
 // responseWriter wraps http.ResponseWriter to capture the status code
@@ -214,4 +220,28 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 		rw.WriteHeader(http.StatusOK)
 	}
 	return rw.ResponseWriter.Write(b)
+}
+
+// Unwrap returns the wrapped writer so http.ResponseController can reach
+// optional methods (SetWriteDeadline, EnableFullDuplex, ...) through this wrapper.
+func (rw *responseWriter) Unwrap() http.ResponseWriter { return rw.ResponseWriter }
+
+// Flush flushes the wrapped writer when it supports flushing; otherwise it is a
+// no-op. A flush commits the response, so a 200 status is recorded if no
+// status was written yet.
+func (rw *responseWriter) Flush() { _ = rw.FlushError() }
+
+// FlushError is Flush returning the wrapped writer's error, so
+// http.ResponseController.Flush reports failures through this wrapper.
+func (rw *responseWriter) FlushError() error {
+	if !rw.written {
+		rw.WriteHeader(http.StatusOK)
+	}
+	return http.NewResponseController(rw.ResponseWriter).Flush()
+}
+
+// Hijack hijacks the wrapped writer's connection, or returns an error wrapping
+// http.ErrNotSupported when the wrapped writer cannot be hijacked.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(rw.ResponseWriter).Hijack()
 }

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Simple response helper functions
@@ -85,12 +87,15 @@ func WriteAPIError(w http.ResponseWriter, r *http.Request, apiErr APIError) erro
 	logFields = append(logFields, extractRequestContext(r)...)
 
 	// Log based on status code
+	// Log with the request context so a default logger built on
+	// otel.TraceHandler adds the trace correlation keys.
+	ctx := r.Context()
 	if apiErr.Code >= 500 {
-		slog.Error("API error response", logFields...)
+		slog.ErrorContext(ctx, "API error response", logFields...)
 	} else if apiErr.Code >= 400 {
-		slog.Warn("API error response", logFields...)
+		slog.WarnContext(ctx, "API error response", logFields...)
 	} else {
-		slog.Info("API error response", logFields...)
+		slog.InfoContext(ctx, "API error response", logFields...)
 	}
 
 	// Unified response structure
@@ -100,22 +105,21 @@ func WriteAPIError(w http.ResponseWriter, r *http.Request, apiErr APIError) erro
 	return JSON(w, apiErr.Code, response)
 }
 
-// extractRequestContext extracts useful request context for logging
+// unmatchedRoute is logged as http.route when no chi route pattern matched.
+// It equals otel.UnmatchedRoute.
+const unmatchedRoute = "unmatched"
+
+// extractRequestContext extracts request context for logging: the method and
+// the chi route pattern as http.route. The raw URL path, query string, client
+// address, user agent and request ID are deliberately not logged; correlate
+// with the trace ID instead.
 func extractRequestContext(r *http.Request) []any {
-	logFields := []any{
+	route := unmatchedRoute
+	if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.RoutePattern() != "" {
+		route = rctx.RoutePattern()
+	}
+	return []any{
 		"method", r.Method,
-		"path", r.URL.Path,
-		"remote_addr", r.RemoteAddr,
-		"user_agent", r.Header.Get("User-Agent"),
+		"http.route", route,
 	}
-
-	if r.URL.RawQuery != "" {
-		logFields = append(logFields, "query", r.URL.RawQuery)
-	}
-
-	if requestID := r.Header.Get("X-Request-ID"); requestID != "" {
-		logFields = append(logFields, "request_id", requestID)
-	}
-
-	return logFields
 }

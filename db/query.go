@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -69,18 +70,23 @@ func QueryMany[T any](ctx context.Context, querier Querier, query string, args .
 func QueryOne[T any](ctx context.Context, querier Querier, query string, args ...any) (T, error) {
 	var zero T
 
-	slog.Debug("QueryOne executing",
+	// Query arguments are never logged: they carry the values a query
+	// filters or writes on, which may be personal data or secrets.
+	slog.DebugContext(ctx, "QueryOne executing",
 		"query", query,
-		"args", args,
+		"arg_count", len(args),
 	)
 
 	rows, err := querier.QueryContext(ctx, query, args...)
 	if err != nil {
-		slog.Error("QueryOne failed",
-			"query", query,
-			"args", args,
-			"error", err,
-		)
+		// The error text is not logged: driver errors can echo bound values
+		// (e.g. `invalid input syntax for type uuid: "<value>"`). Its type
+		// and SQLSTATE are enough to classify the failure.
+		fields := []any{"query", query, "error.type", fmt.Sprintf("%T", err)}
+		if code := sqlState(err); code != "" {
+			fields = append(fields, "db.response.status_code", code)
+		}
+		slog.ErrorContext(ctx, "QueryOne failed", fields...)
 		return zero, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
@@ -101,6 +107,17 @@ func QueryOne[T any](ctx context.Context, querier Querier, query string, args ..
 	var result T
 	err = sqlscan.ScanOne(&result, rows)
 	return result, err
+}
+
+// sqlState returns the SQLSTATE code of the first error in err's chain that
+// exposes one through a SQLState() string method (as pgx's *pgconn.PgError
+// and lib/pq's *pq.Error do), or "".
+func sqlState(err error) string {
+	var se interface{ SQLState() string }
+	if errors.As(err, &se) {
+		return se.SQLState()
+	}
+	return ""
 }
 
 // Exec executes a query with positional parameters without returning results.
