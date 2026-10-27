@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/go-chi/cors"
 	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/internal/realip"
 	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
 	"github.com/platform-smith-labs/japi-core/v4/otel"
 )
@@ -115,12 +115,12 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	// Echo the ID chi just generated back to the caller. chi stores it in the context
-	// and writes no response header, so without this the ID exists on the server and is
-	// invisible to the client that would quote it in a support request.
-	r.Use(httpmiddleware.WithRequestIDHeader())
-	r.Use(middleware.RealIP)
+	// Request ID (inbound X-Request-ID or a new UUID) in the context and on the
+	// response; with tracing on, RequestIDFromTrace replaces it with the trace
+	// ID below. chi's middleware package is deliberately not imported: it
+	// registers net/http/pprof on http.DefaultServeMux.
+	r.Use(httpmiddleware.WithRequestID())
+	r.Use(realip.Middleware)
 	if cfg.tracing != nil {
 		r.Use(cfg.tracing)
 		// From here on the request ID is the trace ID (response header and

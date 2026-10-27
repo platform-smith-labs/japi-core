@@ -33,6 +33,11 @@ Module path is now `github.com/platform-smith-labs/japi-core/v4`. See
 - With `router.WithTracing`, `X-Request-ID` on every response is the trace ID, and
   so is the request ID in the context. An inbound `X-Request-ID` never becomes the
   trace ID.
+- japi-core no longer imports chi's `middleware` package, which registers
+  `net/http/pprof` handlers on `http.DefaultServeMux`. The router installs
+  `middleware/http.WithRequestID` (inbound `X-Request-ID` or a new UUID) and an
+  internal RealIP equivalent instead of chi's, and `GetRequestID` no longer reads
+  the ID stored by chi's `middleware.RequestID`.
 - `middleware/http.RequestIDContextKey` is a typed key. Reading
   `ctx.Value("request_id")` no longer finds it; use `GetRequestID`,
   `GetRequestIDFromContext` and `ContextWithRequestID`.
