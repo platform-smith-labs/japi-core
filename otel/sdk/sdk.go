@@ -115,7 +115,12 @@ type Config struct {
 // registered.
 func Setup(ctx context.Context, cfg Config) (shutdown func(context.Context) error, err error) {
 	res, err := newResource(ctx, cfg.ServiceName, cfg.Attributes)
-	if err != nil {
+	switch {
+	case errors.Is(err, resource.ErrPartialResource) && res != nil:
+		// A malformed OTEL_RESOURCE_ATTRIBUTES must not stop the process:
+		// keep what was detected and report the rest to the error handler.
+		otelapi.Handle(err)
+	case err != nil:
 		return nil, fmt.Errorf("otelsdk: build resource: %w", err)
 	}
 

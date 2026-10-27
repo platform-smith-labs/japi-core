@@ -140,6 +140,22 @@ func TestSetup_AttributesAreFallbacks(t *testing.T) {
 	}
 }
 
+func TestSetup_MalformedResourceEnvIsNotFatal(t *testing.T) {
+	clearOTelEnv(t)
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "not-a-pair,service.version=1.2.3")
+	exp := &keepingExporter{InMemoryExporter: tracetest.NewInMemoryExporter()}
+	shutdown := setup(t, Config{ServiceName: "svc", SpanExporter: exp})
+
+	_, span := otelapi.Tracer("test").Start(context.Background(), "op")
+	span.End()
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown() error = %v", err)
+	}
+	if spans := exp.GetSpans(); len(spans) != 1 || serviceName(spans[0]) != "svc" {
+		t.Fatalf("want one span from service svc despite the malformed variable")
+	}
+}
+
 func TestSetup_PropagatorIsTraceContextOnly(t *testing.T) {
 	clearOTelEnv(t)
 	shutdown := setup(t, Config{})
