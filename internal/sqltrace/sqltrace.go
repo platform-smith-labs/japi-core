@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const instrumentationName = "github.com/platform-smith-labs/japi-core/v3/otel/sql"
+const instrumentationName = "github.com/platform-smith-labs/japi-core/v4/otel/sql"
 
 // errorDescription is the span status description of a failed operation.
 // The driver's error text is never used: it may quote values from the

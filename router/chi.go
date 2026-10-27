@@ -7,9 +7,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/go-chi/cors"
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
-	"github.com/platform-smith-labs/japi-core/v3/otel"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v4/otel"
 )
 
 // RouterOption is a functional option that configures the Chi router's CORS settings.

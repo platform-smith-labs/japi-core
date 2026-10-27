@@ -1,13 +1,8 @@
-module github.com/platform-smith-labs/japi-core/v3
+module github.com/platform-smith-labs/japi-core/v4
 
 go 1.25.0
 
 toolchain go1.25.8
-
-retract (
-	v3.1.0 // module path missing /v3 suffix — broken for consumers
-	v3.0.0 // module path missing /v3 suffix — broken for consumers
-)
 
 require (
 	github.com/georgysavva/scany/v2 v2.1.4

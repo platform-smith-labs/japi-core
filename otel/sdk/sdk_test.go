@@ -16,7 +16,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/platform-smith-labs/japi-core/v3/otel"
+	"github.com/platform-smith-labs/japi-core/v4/otel"
 )
 
 // TraceID is the otel package's helper; aliased for brevity.

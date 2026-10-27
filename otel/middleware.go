@@ -142,7 +142,7 @@ func Middleware(service string, opts ...MiddlewareOption) func(http.Handler) htt
 	if mp == nil {
 		mp = otelapi.GetMeterProvider()
 	}
-	duration, err := mp.Meter("github.com/platform-smith-labs/japi-core/v3/otel").Float64Histogram(
+	duration, err := mp.Meter("github.com/platform-smith-labs/japi-core/v4/otel").Float64Histogram(
 		"http.server.request.duration",
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of HTTP server requests."),

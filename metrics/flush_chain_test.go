@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
-	"github.com/platform-smith-labs/japi-core/v3/otel"
-	"github.com/platform-smith-labs/japi-core/v3/router"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v4/otel"
+	"github.com/platform-smith-labs/japi-core/v4/router"
 )
 
 var errFlush = errors.New("flush failed")

@@ -3,7 +3,7 @@ package otel
 import (
 	"database/sql/driver"
 
-	"github.com/platform-smith-labs/japi-core/v3/internal/sqltrace"
+	"github.com/platform-smith-labs/japi-core/v4/internal/sqltrace"
 )
 
 // WrapDriver returns d with database tracing, for drivers registered or

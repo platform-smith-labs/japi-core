@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	"github.com/platform-smith-labs/japi-core/v3/handler"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
 )
 
 // ParseJSON extracts and validates JSON file from multipart form data.

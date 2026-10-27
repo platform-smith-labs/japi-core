@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	japihttp "github.com/platform-smith-labs/japi-core/v3/middleware/http"
+	japihttp "github.com/platform-smith-labs/japi-core/v4/middleware/http"
 )
 
 // The regression this package existed to have: chi's middleware.RequestID is what the

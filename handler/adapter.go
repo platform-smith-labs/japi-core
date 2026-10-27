@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
 )
 
 // AdaptHandler converts Handler[ParamTypeT, BodyTypeT, ResponseBodyT] to http.HandlerFunc.

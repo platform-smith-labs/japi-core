@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/platform-smith-labs/japi-core/v3/handler"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
 )
 
 // WithLogging creates structured logging middleware for typed handlers.

@@ -16,10 +16,10 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/platform-smith-labs/japi-core/v3/metrics"
-	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
-	"github.com/platform-smith-labs/japi-core/v3/otel"
-	"github.com/platform-smith-labs/japi-core/v3/router"
+	"github.com/platform-smith-labs/japi-core/v4/metrics"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v4/otel"
+	"github.com/platform-smith-labs/japi-core/v4/router"
 )
 
 const sseGap = 50 * time.Millisecond

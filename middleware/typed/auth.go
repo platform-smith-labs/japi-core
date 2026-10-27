@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	"github.com/platform-smith-labs/japi-core/v3/handler"
-	"github.com/platform-smith-labs/japi-core/v3/jwt"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
+	"github.com/platform-smith-labs/japi-core/v4/jwt"
 	"github.com/google/uuid"
 )
 

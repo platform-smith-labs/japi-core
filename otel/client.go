@@ -142,7 +142,7 @@ func (t *clientTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // current global meter provider. The SDK caches instruments, so repeated
 // calls return the same one.
 func clientDuration() metric.Float64Histogram {
-	h, err := otelapi.GetMeterProvider().Meter("github.com/platform-smith-labs/japi-core/v3/otel").Float64Histogram(
+	h, err := otelapi.GetMeterProvider().Meter("github.com/platform-smith-labs/japi-core/v4/otel").Float64Histogram(
 		"http.client.request.duration",
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of HTTP client requests."),

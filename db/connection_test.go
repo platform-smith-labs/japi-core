@@ -3,7 +3,7 @@ package db
 import (
 	"testing"
 
-	"github.com/platform-smith-labs/japi-core/v3/internal/sqltrace"
+	"github.com/platform-smith-labs/japi-core/v4/internal/sqltrace"
 )
 
 func TestOpenConnector_TracingOptIn(t *testing.T) {

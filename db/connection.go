@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/platform-smith-labs/japi-core/v3/internal/sqltrace"
+	"github.com/platform-smith-labs/japi-core/v4/internal/sqltrace"
 )
 
 // Config holds database configuration
