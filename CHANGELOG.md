@@ -22,7 +22,7 @@ Module path is now `github.com/platform-smith-labs/japi-core/v4`. See
   `bad_request` and `invalid_json` (400), `request_too_large` (413),
   `validation_failed` (422, with `errors[]`), and for uploads `file_too_large`,
   `unsupported_media_type`, `invalid_csv`. Validation failures are now 422, not
-  400. Parser and validator text goes to the log only.
+  400. Parser and validator text is neither sent nor logged; a 4xx log line carries the code, status and the cause's Go type (`error.cause_type`) only.
 - A handler deadline is answered with 504 `timeout`.
 - The router answers unmatched paths with a `not_found` problem and unmatched
   methods with a `method_not_allowed` problem (with `Allow`), instead of chi's

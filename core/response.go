@@ -95,10 +95,14 @@ func writeLegacy(w http.ResponseWriter, r *http.Request, apiErr APIError, opts .
 		slog.Int("http.response.status_code", apiErr.Code),
 		slog.String("http.request.method", r.Method),
 		slog.String("http.route", requestRoute(r)),
-		slog.String("message", apiErr.Message),
 	}
-	if apiErr.Detail != "" {
-		attrs = append(attrs, slog.String("detail", apiErr.Detail))
+	// Message and detail are logged only for a server error: a 4xx detail
+	// built from err.Error() can quote the request.
+	if apiErr.Code >= 500 || apiErr.Code < 400 {
+		attrs = append(attrs, slog.String("message", apiErr.Message))
+		if apiErr.Detail != "" {
+			attrs = append(attrs, slog.String("detail", apiErr.Detail))
+		}
 	}
 	if len(apiErr.Fields) > 0 {
 		attrs = append(attrs, slog.Int("validation_field_count", len(apiErr.Fields)))

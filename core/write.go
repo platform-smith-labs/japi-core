@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -62,8 +63,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error, opts ...Write
 	}
 	var p *Problem
 	if errors.As(err, &p) && p != nil {
-		if err != error(p) {
-			// The problem was wrapped: keep the outer context for the log.
+		if _, status := Classify(p); err != error(p) && status >= 500 {
+			// The problem was wrapped: keep the outer context for the log of
+			// a server error. A 4xx wrapper's text can quote the request.
 			opts = append(opts, WithLogAttrs(slog.String("error.wrapped", err.Error())))
 		}
 		return WriteProblem(w, r, p, opts...)
@@ -270,7 +272,14 @@ func logProblem(ctx context.Context, cfg writeConfig, r *http.Request, p *Proble
 		slog.String("http.route", requestRoute(r)),
 	}
 	if p.Cause != nil {
-		attrs = append(attrs, slog.String("error", p.Cause.Error()))
+		// Only the cause's Go type is logged for a 4xx: a client error's
+		// cause comes from parsing the request (a JSON fragment, a CSV
+		// cell, a parameter) and its text can quote customer content. A
+		// server error's cause is the operator's diagnosis and is logged.
+		attrs = append(attrs, slog.String("error.cause_type", causeType(p.Cause)))
+		if res.status >= 500 {
+			attrs = append(attrs, slog.String("error", p.Cause.Error()))
+		}
 	}
 	if res.status >= 500 {
 		// Not on the wire for a 5xx; kept for the operator.
@@ -284,6 +293,26 @@ func logProblem(ctx context.Context, cfg writeConfig, r *http.Request, p *Proble
 	attrs = append(attrs, res.logAttrs...)
 	attrs = append(attrs, cfg.logAttrs...)
 	cfg.logger.LogAttrs(ctx, level, "error response", attrs...)
+}
+
+// causeType returns the Go type of the innermost error in err's Unwrap
+// chain (following the first branch of a joined error), e.g. "*json.SyntaxError".
+func causeType(err error) string {
+	for {
+		var next error
+		switch u := err.(type) {
+		case interface{ Unwrap() error }:
+			next = u.Unwrap()
+		case interface{ Unwrap() []error }:
+			if errs := u.Unwrap(); len(errs) > 0 {
+				next = errs[0]
+			}
+		}
+		if next == nil {
+			return fmt.Sprintf("%T", err)
+		}
+		err = next
+	}
 }
 
 // Classify returns the code and status WriteError would use for err, for

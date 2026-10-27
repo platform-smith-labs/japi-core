@@ -260,3 +260,68 @@ func TestUploadErrorsHaveFixedDetails(t *testing.T) {
 		})
 	}
 }
+
+type ageRow struct {
+	Name string `csv:"name"`
+	Age  int    `csv:"age"`
+}
+
+// A client error's cause can quote customer content; only its type may be
+// logged.
+func TestClientErrorCauseTextNeverLogged(t *testing.T) {
+	setBase(t)
+	const sentinel = "SENTINEL-CELL-4e1d"
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	csvH := handler.AdaptHandler(nil, logger, WithLogging(ParseCSV(
+		func(handler.HandlerContext[struct{}, []ageRow], http.ResponseWriter, *http.Request) (struct{}, error) {
+			t.Fatal("handler reached")
+			return struct{}{}, nil
+		})))
+	jsonH := handler.AdaptHandler(nil, logger, WithLogging(ParseBody(
+		func(handler.HandlerContext[struct{}, createBody], http.ResponseWriter, *http.Request) (struct{}, error) {
+			t.Fatal("handler reached")
+			return struct{}{}, nil
+		})))
+	paramH := handler.AdaptHandler(nil, logger, WithLogging(ParseParams(
+		func(handler.HandlerContext[listParams, struct{}], http.ResponseWriter, *http.Request) (struct{}, error) {
+			t.Fatal("handler reached")
+			return struct{}{}, nil
+		})))
+
+	for name, run := range map[string]func() *httptest.ResponseRecorder{
+		"csv cell": func() *httptest.ResponseRecorder {
+			rec := httptest.NewRecorder()
+			csvH(rec, upload(t, "a.csv", "name,age\nbob,"+sentinel+"\n"))
+			return rec
+		},
+		"json fragment": func() *httptest.ResponseRecorder {
+			rec := httptest.NewRecorder()
+			jsonH(rec, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name": 5, "items": "`+sentinel+`"}`)))
+			return rec
+		},
+		"param value": func() *httptest.ResponseRecorder {
+			rec := httptest.NewRecorder()
+			paramH(rec, httptest.NewRequest(http.MethodGet, "/?limit="+sentinel, nil))
+			return rec
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logs.Reset()
+			rec := run()
+			if rec.Code < 400 || rec.Code >= 500 {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), sentinel) {
+				t.Errorf("sentinel in body: %s", rec.Body.String())
+			}
+			if strings.Contains(logs.String(), sentinel) {
+				t.Errorf("sentinel in log output:\n%s", logs.String())
+			}
+			if !strings.Contains(logs.String(), `"error.cause_type"`) {
+				t.Errorf("cause type not logged:\n%s", logs.String())
+			}
+		})
+	}
+}
