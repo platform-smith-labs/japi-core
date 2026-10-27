@@ -102,34 +102,20 @@ func adaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Execute the handler and handle response/errors
 		_, err := handler(ctx, w, r)
 		if err != nil {
-			// Handle context-specific errors
 			if errors.Is(err, context.Canceled) {
 				// Client disconnected - don't write response
-				ctxLogger.Info("Request cancelled by client", "http.route", route)
+				ctxLogger.InfoContext(requestCtx, "Request cancelled by client", "http.route", route)
 				return
 			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				// Request timeout
-				ctxLogger.Error("Request timeout", "http.route", route)
-				core.WriteAPIError(w, r, *core.NewAPIError(
-					http.StatusGatewayTimeout,
-					"Request timeout",
-				))
-				return
+			var problem *core.Problem
+			if errors.Is(err, context.DeadlineExceeded) && !errors.As(err, &problem) {
+				err = core.GatewayTimeout(core.CodeTimeout, err)
 			}
-
-			// Log the error for debugging
-			// TODO: err.Error() may echo user input (e.g. a rejected value quoted
-			// by a validation or driver error); log a classification instead.
-			ctxLogger.Error("Handler error", "error", err.Error(), "http.route", route)
-
-			// Write appropriate error response based on error type
-			if apiErr, ok := err.(*core.APIError); ok {
-				core.WriteAPIError(w, r, *apiErr)
-			} else {
-				// Fallback for unexpected errors
-				core.Error(w, r, http.StatusInternalServerError, "Internal server error")
-			}
+			// One path for every error: a *core.Problem is written as
+			// constructed, anything else as the generic 500. The writer logs
+			// one line through the request logger and context (trace and
+			// identity fields); error text never reaches the client.
+			_ = core.WriteError(w, r, err, core.WithLogger(ctxLogger))
 			return
 		}
 

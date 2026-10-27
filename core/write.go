@@ -285,3 +285,30 @@ func logProblem(ctx context.Context, cfg writeConfig, r *http.Request, p *Proble
 	attrs = append(attrs, cfg.logAttrs...)
 	cfg.logger.LogAttrs(ctx, level, "error response", attrs...)
 }
+
+// Classify returns the code and status WriteError would use for err, for
+// log lines that must describe an error without quoting its text. A
+// deprecated *APIError has no code and reports "".
+func Classify(err error) (Code, int) {
+	var p *Problem
+	if errors.As(err, &p) && p != nil {
+		status := p.Status
+		if status == 0 {
+			if info, found, _ := lookupCode(p.Code); found && info.Status != 0 {
+				status = info.Status
+			} else {
+				status = http.StatusInternalServerError
+			}
+		}
+		return p.Code, status
+	}
+	var legacy *APIError
+	if errors.As(err, &legacy) && legacy != nil {
+		return "", legacy.Code
+	}
+	var legacyVal APIError
+	if errors.As(err, &legacyVal) {
+		return "", legacyVal.Code
+	}
+	return CodeInternalError, http.StatusInternalServerError
+}

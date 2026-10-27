@@ -176,15 +176,9 @@ func NewChiRouterWithOptions(opts ...RouterOption) chi.Router {
 	return newChiRouter(opts...)
 }
 
-// AdaptErrorHandler adapts a core.HandlerFunc to work with Chi.
+// AdaptErrorHandler adapts a core.HandlerFunc to work with Chi. A returned
+// error is written with core.WriteError (a *core.Problem as constructed,
+// anything else as the generic 500); context.Canceled writes nothing.
 func AdaptErrorHandler(handler core.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := handler(w, r); err != nil {
-			if apiErr, ok := err.(*core.APIError); ok {
-				core.WriteAPIError(w, r, *apiErr)
-			} else {
-				core.Error(w, r, http.StatusInternalServerError, "Internal Server Error")
-			}
-		}
-	}
+	return handler.ServeHTTP
 }

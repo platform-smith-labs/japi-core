@@ -178,7 +178,7 @@ func TestTypedLogging_CorrelatedAndPrivate(t *testing.T) {
 	if handlerRequestID == "" {
 		t.Error("ctx.RequestID no longer populated by the adapter")
 	}
-	for _, msg := range []string{"AdaptHandler creating context", "HTTP Request", "HTTP Response Error", "in handler", "Handler error"} {
+	for _, msg := range []string{"AdaptHandler creating context", "HTTP Request", "HTTP Response Error", "in handler", "error response"} {
 		// The access log middleware also logs "HTTP Request"; the typed
 		// middleware's line is the one with start_time.
 		key := ""

@@ -1,10 +1,13 @@
 package handler
 
 import (
-	"net/http"
+	"errors"
 
 	"github.com/platform-smith-labs/japi-core/v4/core"
 )
+
+// errNotPresent is the cause of the 500 returned by Value for an absent value.
+var errNotPresent = errors.New("nullable value is not present")
 
 // Nullable represents an optional value that may or may not contain data.
 //
@@ -27,7 +30,7 @@ import (
 //	func CreateUser(ctx HandlerContext) (*Response, error) {
 //	    body, err := ctx.Body.Value() // Returns error if middleware didn't run
 //	    if err != nil {
-//	        return nil, core.ErrInternal("missing request body")
+//	        return nil, core.Internal(err)
 //	    }
 //	    // Use body safely...
 //	}
@@ -82,12 +85,12 @@ func (n Nullable[T]) HasValue() bool {
 //
 //	body, err := ctx.Body.Value()
 //	if err != nil {
-//	    return nil, core.ErrInternal("missing request body")
+//	    return nil, core.Internal(err)
 //	}
 func (n Nullable[T]) Value() (T, error) {
 	if !n.hasValue {
 		var zero T
-		return zero, core.NewAPIError(http.StatusInternalServerError, "nullable value is not present")
+		return zero, core.Internal(errNotPresent)
 	}
 	return n.value, nil
 }

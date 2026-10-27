@@ -1,11 +1,13 @@
 package typed
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/platform-smith-labs/japi-core/v4/core"
 	"github.com/platform-smith-labs/japi-core/v4/handler"
 )
 
@@ -41,7 +43,7 @@ func WithLogging[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		route := routePattern(r)
 
 		// Log request
-		ctx.Logger.Info("HTTP Request",
+		ctx.Logger.InfoContext(r.Context(), "HTTP Request",
 			"method", r.Method,
 			"http.route", route,
 			"start_time", startTime.Format(time.RFC3339Nano),
@@ -56,18 +58,25 @@ func WithLogging[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 
 		// Log response
 		if err != nil {
-			// TODO: err.Error() may echo user input (e.g. a rejected value quoted
-			// by a validation or driver error); log a classification instead.
-			ctx.Logger.Error("HTTP Response Error",
+			// The error is described by its code and status, never its
+			// text: error text can quote request data. The error response
+			// writer logs the cause once, at the point of writing.
+			code, status := core.Classify(err)
+			level := slog.LevelWarn
+			if status >= 500 {
+				level = slog.LevelError
+			}
+			ctx.Logger.Log(r.Context(), level, "HTTP Response Error",
 				"method", r.Method,
 				"http.route", route,
-				"error", err.Error(),
+				"error.type", string(code),
+				"http.response.status_code", status,
 				"start_time", startTime.Format(time.RFC3339Nano),
 				"end_time", endTime.Format(time.RFC3339Nano),
 				"duration_ms", duration.Milliseconds(),
 			)
 		} else {
-			ctx.Logger.Info("HTTP Response Success",
+			ctx.Logger.InfoContext(r.Context(), "HTTP Response Success",
 				"method", r.Method,
 				"http.route", route,
 				"start_time", startTime.Format(time.RFC3339Nano),
