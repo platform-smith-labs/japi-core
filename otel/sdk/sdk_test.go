@@ -3,6 +3,7 @@ package otelsdk
 import (
 	"context"
 	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"net/http"
 	"strings"
 	"sync"
@@ -197,6 +198,39 @@ func TestSetup_NoExporterStillCreatesValidIDs(t *testing.T) {
 	if err := shutdown(context.Background()); err != nil {
 		t.Errorf("shutdown() error = %v", err)
 	}
+}
+
+func TestSetup_ViewsSetHistogramBuckets(t *testing.T) {
+	clearOTelEnv(t)
+	reg := prometheus.NewRegistry()
+	shutdown := setup(t, Config{
+		Registerer: reg,
+		Views: []sdkmetric.View{sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "test.buckets"},
+			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: []float64{1, 2}}},
+		)},
+	})
+	t.Cleanup(func() { _ = shutdown(context.Background()) })
+
+	hist, err := otelapi.Meter("test").Float64Histogram("test.buckets")
+	if err != nil {
+		t.Fatalf("Float64Histogram() error = %v", err)
+	}
+	hist.Record(context.Background(), 1.5)
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("Gather() error = %v", err)
+	}
+	for _, f := range families {
+		if strings.HasPrefix(f.GetName(), "test_buckets") {
+			if got := len(f.GetMetric()[0].GetHistogram().GetBucket()); got != 2 {
+				t.Fatalf("buckets = %d, want 2 from the view", got)
+			}
+			return
+		}
+	}
+	t.Fatalf("no test_buckets* family in %v", familyNames(families))
 }
 
 func TestSetup_MeterProviderWritesToRegisterer(t *testing.T) {

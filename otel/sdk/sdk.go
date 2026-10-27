@@ -82,6 +82,10 @@ type Config struct {
 	// When nil, no meter provider is installed and the global stays no-op.
 	Registerer prometheus.Registerer
 
+	// Views customise instruments on the meter provider, for example the
+	// bucket boundaries of a histogram. Ignored when Registerer is nil.
+	Views []sdkmetric.View
+
 	// MaxQueueSize bounds the number of finished spans buffered for export.
 	// When the queue is full new spans are dropped; a request is never
 	// blocked waiting on the exporter.
@@ -155,6 +159,7 @@ func Setup(ctx context.Context, cfg Config) (shutdown func(context.Context) erro
 			// Attach exemplars only for measurements taken inside a sampled
 			// span, so every exemplar links to a trace that was recorded.
 			sdkmetric.WithExemplarFilter(exemplar.TraceBasedFilter),
+			sdkmetric.WithView(cfg.Views...),
 		)
 	}
 
