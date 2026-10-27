@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	otelapi "go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
@@ -267,4 +268,39 @@ func TestRequestIDWithoutTracingStaysChis(t *testing.T) {
 	if got := rec.Header().Get("X-Request-ID"); got != "caller-id-789" {
 		t.Errorf("X-Request-ID = %q", got)
 	}
+}
+
+func TestUnmatchedRequestsGetProblems(t *testing.T) {
+	r := router.NewChiRouter()
+	r.Get("/items/{id}", func(http.ResponseWriter, *http.Request) {})
+	r.Route("/sub", func(sr chi.Router) {
+		sr.Post("/x", func(http.ResponseWriter, *http.Request) {})
+	})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope", nil))
+	if rec.Code != 404 || decodeProblem(t, rec)["status"] != float64(404) {
+		t.Fatalf("404: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/items/1", nil))
+	if rec.Code != 405 || decodeProblem(t, rec)["status"] != float64(405) {
+		t.Fatalf("405: %d %s", rec.Code, rec.Body.String())
+	}
+	if allow := rec.Header().Values("Allow"); len(allow) != 1 || allow[0] != http.MethodGet {
+		t.Errorf("Allow = %v, want [GET]", allow)
+	}
+
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sub/x", nil))
+	if rec.Code != 405 || rec.Header().Get("Allow") != http.MethodPost {
+		t.Fatalf("sub-router 405: %d %v %s", rec.Code, rec.Header(), rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sub/nope", nil))
+	if rec.Code != 404 {
+		t.Fatalf("sub-router 404: %d", rec.Code)
+	}
+	decodeProblem(t, rec)
 }

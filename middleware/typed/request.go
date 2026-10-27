@@ -97,9 +97,10 @@ func ParseParams[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.
 				if queryTag != "" {
 					paramType = "query parameter"
 				}
-				// The conversion error quotes the value: log only.
+				// setFieldValue's errors are fixed texts that never quote
+				// the value.
 				return zeroResponse, core.BadRequest(core.CodeBadRequest,
-					"Invalid "+paramType+" '"+paramName+"'.").WithCause(err)
+					"Invalid "+paramType+" '"+paramName+"': "+err.Error()+".").WithCause(err)
 			}
 		}
 
@@ -224,7 +225,8 @@ func isRequired(field reflect.StructField) bool {
 	return strings.Contains(validateTag, "required")
 }
 
-// setFieldValue sets the field value from string parameter
+// setFieldValue sets the field value from string parameter. Its errors never
+// quote the value: they are logged as the cause of a 400.
 func setFieldValue(field reflect.Value, value string) error {
 	if !field.CanSet() {
 		return fmt.Errorf("field cannot be set")
@@ -239,7 +241,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			intVal, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				return fmt.Errorf("invalid integer: %s", value)
+				return errors.New("not an integer")
 			}
 			field.SetInt(intVal)
 		}
@@ -249,7 +251,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			uintVal, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
-				return fmt.Errorf("invalid unsigned integer: %s", value)
+				return errors.New("not an unsigned integer")
 			}
 			field.SetUint(uintVal)
 		}
@@ -259,7 +261,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			floatVal, err := strconv.ParseFloat(value, 64)
 			if err != nil {
-				return fmt.Errorf("invalid float: %s", value)
+				return errors.New("not a number")
 			}
 			field.SetFloat(floatVal)
 		}
@@ -269,7 +271,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			boolVal, err := strconv.ParseBool(value)
 			if err != nil {
-				return fmt.Errorf("invalid boolean: %s", value)
+				return errors.New("not a boolean")
 			}
 			field.SetBool(boolVal)
 		}
@@ -283,7 +285,7 @@ func setFieldValue(field reflect.Value, value string) error {
 			} else {
 				parsedUUID, err := uuid.Parse(value)
 				if err != nil {
-					return fmt.Errorf("invalid UUID format: %s", value)
+					return errors.New("not a UUID")
 				}
 				field.Set(reflect.ValueOf(parsedUUID))
 			}

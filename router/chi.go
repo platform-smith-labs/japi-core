@@ -139,7 +139,37 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 		AllowCredentials: cfg.allowCredentials,
 		MaxAge:           cfg.maxAge,
 	}))
+	// Unmatched requests get Problem Details bodies too (chi's defaults are
+	// a text/plain 404 and an empty 405). A caller may still replace them
+	// with r.NotFound / r.MethodNotAllowed.
+	r.NotFound(notFound)
+	r.MethodNotAllowed(methodNotAllowed(r))
 	return r
+}
+
+// notFound answers a request no route matches.
+func notFound(w http.ResponseWriter, r *http.Request) {
+	_ = core.WriteProblem(w, r, core.NotFound(core.CodeNotFound, "No resource matches the request path."))
+}
+
+// standardMethods are the methods probed to build a 405's Allow header.
+var standardMethods = []string{
+	http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+	http.MethodDelete, http.MethodOptions, http.MethodConnect, http.MethodTrace,
+}
+
+// methodNotAllowed answers a request whose path matches a route but not its
+// method, with the Allow header chi's default handler would send.
+func methodNotAllowed(routes chi.Routes) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, m := range standardMethods {
+			if routes.Match(chi.NewRouteContext(), m, r.URL.Path) {
+				w.Header().Add("Allow", m)
+			}
+		}
+		_ = core.WriteProblem(w, r, core.NewProblem(core.CodeMethodNotAllowed, http.StatusMethodNotAllowed,
+			"The resource does not support this method."))
+	}
 }
 
 // NewChiRouter creates a Chi router with the secure default CORS configuration.

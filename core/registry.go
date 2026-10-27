@@ -82,6 +82,7 @@ var builtinCodes = map[Code]CodeInfo{
 	CodeUnauthorized:         {Title: "Unauthorized", Status: http.StatusUnauthorized},
 	CodePermissionDenied:     {Title: "Permission denied", Status: http.StatusForbidden},
 	CodeNotFound:             {Title: "Not found", Status: http.StatusNotFound},
+	CodeMethodNotAllowed:     {Title: "Method not allowed", Status: http.StatusMethodNotAllowed},
 	CodeConflict:             {Title: "Conflict", Status: http.StatusConflict},
 	CodeRequestTooLarge:      {Title: "Request too large", Status: http.StatusRequestEntityTooLarge},
 	CodeUnsupportedMediaType: {Title: "Unsupported media type", Status: http.StatusUnsupportedMediaType},

@@ -18,6 +18,7 @@ const (
 	CodeUnauthorized         Code = "unauthorized"
 	CodePermissionDenied     Code = "permission_denied"
 	CodeNotFound             Code = "not_found"
+	CodeMethodNotAllowed     Code = "method_not_allowed"
 	CodeConflict             Code = "conflict"
 	CodeRequestTooLarge      Code = "request_too_large"
 	CodeUnsupportedMediaType Code = "unsupported_media_type"
