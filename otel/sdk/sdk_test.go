@@ -2,6 +2,7 @@ package otelsdk
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/attribute"
 	"net/http"
 	"strings"
 	"sync"
@@ -102,6 +103,40 @@ func TestSetup_EnvServiceNameWins(t *testing.T) {
 	}
 	if got := serviceName(spans[0]); got != "from-env" {
 		t.Errorf("service.name = %q, want OTEL_SERVICE_NAME", got)
+	}
+}
+
+func TestSetup_AttributesAreFallbacks(t *testing.T) {
+	clearOTelEnv(t)
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.environment.name=from-env")
+	exp := &keepingExporter{InMemoryExporter: tracetest.NewInMemoryExporter()}
+	shutdown := setup(t, Config{
+		ServiceName:  "svc",
+		SpanExporter: exp,
+		Attributes: []attribute.KeyValue{
+			attribute.String("service.version", "1.2.3"),
+			attribute.String("deployment.environment.name", "fallback"),
+		},
+	})
+
+	_, span := otelapi.Tracer("test").Start(context.Background(), "op")
+	span.End()
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown() error = %v", err)
+	}
+	spans := exp.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("spans = %d, want 1", len(spans))
+	}
+	got := map[attribute.Key]string{}
+	for _, kv := range spans[0].Resource.Attributes() {
+		got[kv.Key] = kv.Value.Emit()
+	}
+	if got["service.version"] != "1.2.3" {
+		t.Errorf("service.version = %q, want the Config value", got["service.version"])
+	}
+	if got["deployment.environment.name"] != "from-env" {
+		t.Errorf("deployment.environment.name = %q, want OTEL_RESOURCE_ATTRIBUTES", got["deployment.environment.name"])
 	}
 }
 

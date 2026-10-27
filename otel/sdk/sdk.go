@@ -63,6 +63,11 @@ type Config struct {
 	// rebuild.
 	ServiceName string
 
+	// Attributes are extra resource attributes, such as service.version or
+	// deployment.environment.name. Like ServiceName they are fallbacks: a
+	// key also set in OTEL_RESOURCE_ATTRIBUTES takes the environment's value.
+	Attributes []attribute.KeyValue
+
 	// SpanExporter receives finished spans through a batch span processor.
 	// When nil, spans are still created, sampled and carry valid IDs (so they
 	// can be propagated and correlated with logs), but nothing is exported.
@@ -109,7 +114,7 @@ type Config struct {
 // same Registerer fails, because the Prometheus collector is already
 // registered.
 func Setup(ctx context.Context, cfg Config) (shutdown func(context.Context) error, err error) {
-	res, err := newResource(ctx, cfg.ServiceName)
+	res, err := newResource(ctx, cfg.ServiceName, cfg.Attributes)
 	if err != nil {
 		return nil, fmt.Errorf("otelsdk: build resource: %w", err)
 	}
@@ -169,12 +174,15 @@ func Setup(ctx context.Context, cfg Config) (shutdown func(context.Context) erro
 }
 
 // newResource describes this process. Detectors are merged in order and later
-// ones win, so the Config fallback comes first and the standard
-// OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES variables override it.
-func newResource(ctx context.Context, serviceName string) (*resource.Resource, error) {
+// ones win, so the Config fallbacks come first and the standard
+// OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES variables override them.
+func newResource(ctx context.Context, serviceName string, attrs []attribute.KeyValue) (*resource.Resource, error) {
 	opts := []resource.Option{
 		resource.WithTelemetrySDK(),
 		resource.WithHost(),
+	}
+	if len(attrs) > 0 {
+		opts = append(opts, resource.WithAttributes(attrs...))
 	}
 	if serviceName != "" {
 		opts = append(opts, resource.WithAttributes(attribute.String("service.name", serviceName)))
