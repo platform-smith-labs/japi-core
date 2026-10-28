@@ -45,14 +45,14 @@ Module path is now `github.com/platform-smith-labs/japi-core/v4`. See
   access log describes a failure by `error.type` and status rather than error
   text.
 
-### Deprecated
+### Removed (breaking)
 
-- `core.APIError`, `NewAPIError`, `NewValidationError`, `AddField`,
-  `WriteAPIError`, `core.Error`, the `ErrBadRequest`... variables and the
-  `{"error": {...}}` envelope. They still compile, and a returned `*APIError` is
-  still written in the old envelope, so services can migrate route by route. For
-  a 5xx the envelope now carries only the status text. They will be removed in a
-  later major version.
+- The v3 error API: `core.APIError`, `NewAPIError`, `NewValidationError`,
+  `AddField`, `WriteAPIError`, `core.Error`, the `ErrBadRequest`,
+  `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound` and `ErrInternal` variables,
+  and the `{"error": {...}}` envelope. Every error is now written as
+  `application/problem+json`; `WriteError` treats any non-`*Problem` error as
+  the generic 500. See the README migration table.
 
 ### Added
 

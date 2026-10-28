@@ -193,7 +193,7 @@ func TestTypedLogging_CorrelatedAndPrivate(t *testing.T) {
 	}
 }
 
-func TestWriteAPIError_LogCorrelatedAndPrivate(t *testing.T) {
+func TestWriteProblem_LogCorrelatedAndPrivate(t *testing.T) {
 	h, _, buf, spans := privacyRouter(t)
 
 	prev := slog.Default()
@@ -201,12 +201,12 @@ func TestWriteAPIError_LogCorrelatedAndPrivate(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	h.Get(routeWant, router.AdaptErrorHandler(func(w http.ResponseWriter, _ *http.Request) error {
-		return core.NewAPIError(http.StatusNotFound, "not found")
+		return core.NotFound("not_found", "not found")
 	}))
 
 	out := serve(t, h, buf)
 	assertNoLeaks(t, out)
-	line := findLine(t, out, "API error response")
+	line := findLine(t, out, "error response")
 	assertCorrelated(t, line, spans)
 	if line["http.route"] != routeWant || line["http.request.method"] != http.MethodGet {
 		t.Errorf("request context wrong: %v", line)

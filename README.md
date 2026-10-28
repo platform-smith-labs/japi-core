@@ -47,8 +47,9 @@ if err != nil {
 ## Migrating from v3
 
 1. Change imports from `github.com/platform-smith-labs/japi-core/v3` to `/v4`.
-2. Replace constructors. The old ones still compile (deprecated) and write the
-   old envelope until they are removed:
+2. Replace constructors. The old ones (`APIError`, `NewAPIError`,
+   `NewValidationError`, `WriteAPIError`, `core.Error`, `ErrBadRequest` and the
+   other `Err*` variables) are removed in v4:
 
    | v3 | v4 |
    |---|---|
@@ -62,7 +63,7 @@ if err != nil {
    | `core.NewAPIError(500, msg, err.Error())` | `core.Internal(err)` |
    | `core.NewAPIError(502/503/504, msg, err.Error())` | `core.BadGateway` / `core.Unavailable` / `core.GatewayTimeout(code, err)` |
    | `core.NewValidationError(msg).AddField(f, m)` | `core.Validation(core.FieldError{Detail: m, Pointer: "#/" + f})` |
-   | `core.WriteAPIError(w, r, e)` | `core.WriteProblem(w, r, p)` or `core.WriteError(w, r, err)` |
+   | `core.Error(w, r, status, msg)` / `core.WriteAPIError(w, r, e)` | `core.WriteProblem(w, r, p)` or `core.WriteError(w, r, err)` |
    | any status | `core.NewProblem(code, status, detail)` |
 
    Never pass `err.Error()` as a detail: attach it with `.WithCause(err)`, which
@@ -75,8 +76,7 @@ if err != nil {
    and are named in `detail`.
 5. Clients: parse `application/problem+json`, read the code from the last
    segment of `type`, show `title` (and `detail` for 4xx), and quote `trace_id`
-   when reporting a problem. The old `{"error": {...}}` envelope goes away when
-   the deprecated API is removed.
+   when reporting a problem. The old `{"error": {...}}` envelope is no longer written.
 6. Request-body validation failures are 422 `validation_failed` (were 400), and
    `ctx.Value("request_id")` no longer finds the request ID: use
    `httpmiddleware.GetRequestID`.

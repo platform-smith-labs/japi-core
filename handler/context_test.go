@@ -112,12 +112,12 @@ func TestAdapterContextCancellation(t *testing.T) {
 		}
 	})
 
-	t.Run("handles APIError wrapping context.Canceled", func(t *testing.T) {
+	t.Run("handles Problem wrapping context.Canceled", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 		handler := func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
-			// Return APIError with 499 status for client cancellation
-			return struct{}{}, core.NewAPIError(499, "Client closed request")
+			// Return Problem with 499 status for client cancellation
+			return struct{}{}, core.NewProblem("client_closed", 499, "Client closed request")
 		}
 
 		adapted := AdaptHandler[struct{}, struct{}, struct{}](nil, logger, handler)
@@ -279,11 +279,11 @@ func TestHandlerContextNonNil(t *testing.T) {
 
 // TestRegularErrorsNotAffectedByContext verifies non-context errors still work
 func TestRegularErrorsNotAffectedByContext(t *testing.T) {
-	t.Run("APIError is handled normally", func(t *testing.T) {
+	t.Run("Problem is handled normally", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 		handler := func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
-			return struct{}{}, core.NewAPIError(http.StatusNotFound, "Resource not found")
+			return struct{}{}, core.NotFound("not_found", "Resource not found")
 		}
 
 		adapted := AdaptHandler[struct{}, struct{}, struct{}](nil, logger, handler)
@@ -302,8 +302,8 @@ func TestRegularErrorsNotAffectedByContext(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 		handler := func(ctx HandlerContext[struct{}, struct{}], w http.ResponseWriter, r *http.Request) (struct{}, error) {
-			// Wrap sql error in APIError
-			return struct{}{}, core.NewAPIError(http.StatusNotFound, "User not found")
+			// Wrap sql error in Problem
+			return struct{}{}, core.NotFound("not_found", "User not found")
 		}
 
 		adapted := AdaptHandler[struct{}, struct{}, struct{}](nil, logger, handler)

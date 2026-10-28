@@ -53,9 +53,7 @@ func AlreadyRecorded() WriteOption {
 
 // WriteError writes err as a Problem Details response.
 //
-// A *Problem found with errors.As is written as constructed. A deprecated
-// *APIError is still written in the old envelope until it is removed. Any
-// other error is written as the generic 500 internal_error problem; its text
+// A *Problem found with errors.As is written as constructed. Any other error is written as the generic 500 internal_error problem; its text
 // goes to the log and the span, never to the client.
 func WriteError(w http.ResponseWriter, r *http.Request, err error, opts ...WriteOption) error {
 	if err == nil {
@@ -69,14 +67,6 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error, opts ...Write
 			opts = append(opts, WithLogAttrs(slog.String("error.wrapped", err.Error())))
 		}
 		return WriteProblem(w, r, p, opts...)
-	}
-	var legacy *APIError
-	if errors.As(err, &legacy) && legacy != nil {
-		return writeLegacy(w, r, *legacy, opts...)
-	}
-	var legacyVal APIError
-	if errors.As(err, &legacyVal) {
-		return writeLegacy(w, r, legacyVal, opts...)
 	}
 	return WriteProblem(w, r, Internal(err), opts...)
 }
@@ -316,8 +306,7 @@ func causeType(err error) string {
 }
 
 // Classify returns the code and status WriteError would use for err, for
-// log lines that must describe an error without quoting its text. A
-// deprecated *APIError has no code and reports "".
+// log lines that must describe an error without quoting its text.
 func Classify(err error) (Code, int) {
 	var p *Problem
 	if errors.As(err, &p) && p != nil {
@@ -330,14 +319,6 @@ func Classify(err error) (Code, int) {
 			}
 		}
 		return p.Code, status
-	}
-	var legacy *APIError
-	if errors.As(err, &legacy) && legacy != nil {
-		return "", legacy.Code
-	}
-	var legacyVal APIError
-	if errors.As(err, &legacyVal) {
-		return "", legacyVal.Code
 	}
 	return CodeInternalError, http.StatusInternalServerError
 }

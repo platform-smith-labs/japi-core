@@ -370,25 +370,3 @@ func TestAboutBlankWithoutTypeBase(t *testing.T) {
 		t.Fatalf("got %v, want %v", body, want)
 	}
 }
-
-func TestLegacyAPIErrorServerDetailSuppressed(t *testing.T) {
-	var logs bytes.Buffer
-	rec := httptest.NewRecorder()
-	_ = core.WriteError(rec, httptest.NewRequest(http.MethodGet, "/x", nil),
-		core.NewAPIError(500, "boom "+marker, "pq: "+marker),
-		core.WithLogger(slog.New(slog.NewJSONHandler(&logs, nil))))
-	if rec.Code != 500 || strings.Contains(rec.Body.String(), marker) {
-		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(logs.String(), marker) {
-		t.Errorf("legacy 5xx text not logged: %s", logs.String())
-	}
-
-	rec = httptest.NewRecorder()
-	_ = core.WriteError(rec, httptest.NewRequest(http.MethodGet, "/x", nil),
-		fmt.Errorf("wrapped: %w", core.NewAPIError(404, "Widget not found")),
-		core.WithLogger(slog.New(slog.DiscardHandler)))
-	if rec.Code != 404 || !strings.Contains(rec.Body.String(), `"message":"Widget not found"`) {
-		t.Fatalf("legacy 4xx envelope changed: %d %s", rec.Code, rec.Body.String())
-	}
-}
