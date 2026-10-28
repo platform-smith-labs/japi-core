@@ -32,7 +32,10 @@ const UnmatchedRoute = "unmatched"
 
 // DefaultSkipPaths are the request paths Middleware does not trace or measure
 // unless WithSkipPaths replaces them: health/readiness probes and the metrics
-// scrape endpoint, which would otherwise dominate trace volume.
+// scrape endpoint, which would otherwise dominate trace volume. Only GET and
+// HEAD requests to these paths are skipped (that is what probes and scrapes
+// send); any other method is traced like every other request, so the error
+// response it gets (405, typically) carries a trace ID that finds a trace.
 var DefaultSkipPaths = []string{"/health", "/healthz", "/ready", "/readyz", "/live", "/livez", "/metrics"}
 
 // requestDurationBuckets are the explicit bucket boundaries (seconds) the
@@ -69,9 +72,10 @@ type middlewareConfig struct {
 	meterProvider   metric.MeterProvider
 }
 
-// WithSkipPaths replaces DefaultSkipPaths. Requests whose URL path exactly
-// equals one of paths get no span and no duration measurement. Call with no
-// arguments to trace every request.
+// WithSkipPaths replaces DefaultSkipPaths. GET and HEAD requests whose URL
+// path exactly equals one of paths get no span and no duration measurement;
+// requests with any other method are traced. Call with no arguments to trace
+// every request.
 func WithSkipPaths(paths ...string) MiddlewareOption {
 	return func(c *middlewareConfig) {
 		c.skipPaths = make(map[string]struct{}, len(paths))
@@ -177,10 +181,12 @@ func Middleware(service string, opts ...MiddlewareOption) func(http.Handler) htt
 				return spanMethod(r.Method) + " " + routePattern(r)
 			}),
 		)
-		// Skipped paths bypass otelhttp and routeHandler entirely: no span,
-		// no duration. (An otelhttp filter would still run routeHandler.)
+		// Skipped requests bypass otelhttp and routeHandler entirely: no
+		// span, no duration. (An otelhttp filter would still run
+		// routeHandler.) Only reads are skipped: a POST to /health is not a
+		// probe, and the problem it gets must lead to a trace.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if _, skip := cfg.skipPaths[r.URL.Path]; skip {
+			if _, skip := cfg.skipPaths[r.URL.Path]; skip && isProbeMethod(r.Method) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -191,6 +197,10 @@ func Middleware(service string, opts ...MiddlewareOption) func(http.Handler) htt
 		})
 	}
 }
+
+// isProbeMethod reports whether a request to a skip path may go untraced:
+// only GET and HEAD, the methods health probes and metric scrapes use.
+func isProbeMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
 // origWriterKey carries the ResponseWriter Middleware received.
 type origWriterKey struct{}

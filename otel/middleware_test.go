@@ -157,6 +157,32 @@ func TestMiddleware_SkipsHealthAndMetrics(t *testing.T) {
 	}
 }
 
+func TestMiddleware_SkipPathsSkipOnlyReads(t *testing.T) {
+	h := newHarness(t)
+	h.serve(http.MethodHead, "/health", nil)
+	if n := len(h.spans.Ended()) + len(h.spans.Started()); n != 0 {
+		t.Fatalf("HEAD /health: want no span, got %d", n)
+	}
+	// Not a probe: the 405 it gets must lead to a trace.
+	h.serve(http.MethodPost, "/health", nil)
+	h.serve(http.MethodDelete, "/metrics", nil)
+	spans := h.spans.Ended()
+	if len(spans) != 2 {
+		t.Fatalf("want 2 ended spans for non-read requests to skip paths, got %d", len(spans))
+	}
+	for _, s := range spans {
+		var status int64
+		for _, kv := range s.Attributes() {
+			if kv.Key == "http.response.status_code" {
+				status = kv.Value.AsInt64()
+			}
+		}
+		if status != http.StatusMethodNotAllowed {
+			t.Errorf("span %q status = %d, want 405", s.Name(), status)
+		}
+	}
+}
+
 func TestMiddleware_WithSkipPathsReplacesDefaults(t *testing.T) {
 	h := newHarness(t, WithSkipPaths("/users/1"))
 	h.serve(http.MethodGet, "/health", nil)

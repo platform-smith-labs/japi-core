@@ -82,5 +82,9 @@ Module path is now `github.com/platform-smith-labs/japi-core/v4`. See
 - A panic inside `otel.Middleware` no longer records the panic value on the server
   span, and an error status set by the application is no longer cleared by the
   HTTP instrumentation.
+- `otel.Middleware` skip paths (`DefaultSkipPaths`, `WithSkipPaths`) skip only
+  GET and HEAD requests. A request with any other method to a probe or scrape
+  path (e.g. `POST /health`, answered 405) is traced, so the `trace_id` and
+  `X-Request-ID` of its error response find a trace.
 - Logs no longer carry the client address, user agent, raw path or query string,
   database arguments or driver error text.
