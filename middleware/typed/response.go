@@ -1,10 +1,11 @@
 package typed
 
 import (
+	"fmt"
 	"net/http"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	"github.com/platform-smith-labs/japi-core/v3/handler"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
 )
 
 // ResponseJSON handles writing successful responses as JSON.
@@ -40,8 +41,9 @@ func ResponseJSON[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler
 
 		// Write successful JSON response
 		if err := core.JSON(w, statusCode, responseData); err != nil {
-			ctx.Logger.Error("Failed to write JSON response", "error", err.Error(), "path", r.URL.Path)
-			return responseData, core.NewAPIError(http.StatusInternalServerError, "Failed to write response")
+			// The status line may already be sent; the error is returned for
+			// the log and the span.
+			return responseData, core.Internal(fmt.Errorf("writing JSON response: %w", err))
 		}
 
 		return responseData, nil
@@ -81,8 +83,7 @@ func ResponseJSONFile[ParamTypeT any, BodyTypeT any, ResponseBodyT any](filename
 
 			// Write successful JSON file response
 			if err := core.JSONFile(w, statusCode, responseData, filename); err != nil {
-				ctx.Logger.Error("Failed to write JSON file response", "error", err.Error(), "path", r.URL.Path, "filename", filename)
-				return responseData, core.NewAPIError(http.StatusInternalServerError, "Failed to write response")
+				return responseData, core.Internal(fmt.Errorf("writing JSON file response: %w", err))
 			}
 
 			return responseData, nil

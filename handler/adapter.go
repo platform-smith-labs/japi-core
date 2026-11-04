@@ -7,9 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
 )
 
 // AdaptHandler converts Handler[ParamTypeT, BodyTypeT, ResponseBodyT] to http.HandlerFunc.
@@ -67,27 +70,23 @@ func adaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Extract request context for cancellation and timeout support
 		requestCtx := r.Context()
 
-		// Log database connection status for debugging
-		logger.Debug("AdaptHandler creating context",
-			"db_nil", db == nil,
-			"path", r.URL.Path,
-		)
+		route := routePattern(requestCtx)
 
-		// Resolve the request ID once, here, so EVERY typed handler carries it without
-		// a per-handler middleware and without touching a single call site.
-		//
-		// The ID already existed on every request — router.NewChiRouter installs chi's
-		// middleware.RequestID — but nothing read it, so ctx.RequestID was always empty
-		// and every log line came out anonymous. Resolving it at the one place the
-		// HandlerContext is built fixes that for all handlers at once.
+		// Resolve the request ID once, here, so every typed handler can read it from
+		// ctx.RequestID without a per-handler middleware. It is not added to the
+		// logger: log lines are correlated by trace ID instead (see below).
 		requestID := httpmiddleware.GetRequestIDFromContext(requestCtx)
 
 		// Enrich the logger rather than replacing it: everything the caller configured
-		// (handlers, attrs, groups) is preserved, with request_id added.
-		ctxLogger := logger
-		if requestID != "" {
-			ctxLogger = logger.With(slog.String("request_id", requestID))
-		}
+		// (handlers, attrs, groups) is preserved, with the trace correlation keys of the
+		// request's span added when one is present (e.g. from otel.Middleware).
+		ctxLogger := withTraceAttrs(logger, requestCtx)
+
+		// Log database connection status for debugging
+		ctxLogger.Debug("AdaptHandler creating context",
+			"db_nil", db == nil,
+			"http.route", route,
+		)
 
 		// Create handler context with application dependencies and request context
 		ctx := HandlerContext[ParamTypeT, BodyTypeT]{
@@ -103,38 +102,55 @@ func adaptHandler[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		// Execute the handler and handle response/errors
 		_, err := handler(ctx, w, r)
 		if err != nil {
-			// Handle context-specific errors
 			if errors.Is(err, context.Canceled) {
 				// Client disconnected - don't write response
-				logger.Info("Request cancelled by client", "path", r.URL.Path)
+				ctxLogger.InfoContext(requestCtx, "Request cancelled by client", "http.route", route)
 				return
 			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				// Request timeout
-				logger.Error("Request timeout", "path", r.URL.Path)
-				core.WriteAPIError(w, r, *core.NewAPIError(
-					http.StatusGatewayTimeout,
-					"Request timeout",
-				))
-				return
+			var problem *core.Problem
+			if errors.Is(err, context.DeadlineExceeded) && !errors.As(err, &problem) {
+				err = core.GatewayTimeout(core.CodeTimeout, err)
 			}
-
-			// Log the error for debugging
-			logger.Error("Handler error", "error", err.Error(), "path", r.URL.Path)
-
-			// Write appropriate error response based on error type
-			if apiErr, ok := err.(*core.APIError); ok {
-				core.WriteAPIError(w, r, *apiErr)
-			} else {
-				// Fallback for unexpected errors
-				core.Error(w, r, http.StatusInternalServerError, "Internal server error")
-			}
+			// One path for every error: a *core.Problem is written as
+			// constructed, anything else as the generic 500. The writer logs
+			// one line through the request logger and context (trace and
+			// identity fields); error text never reaches the client.
+			_ = core.WriteError(w, r, err, core.WithLogger(ctxLogger))
 			return
 		}
 
 		// Success: Response handling is now delegated to middleware (e.g., ResponseJSON)
 		// The handler chain is responsible for writing the response
 	}
+}
+
+// unmatchedRoute is logged as http.route when no chi route pattern matched.
+// It equals otel.UnmatchedRoute; the raw URL path is never logged in its place.
+const unmatchedRoute = "unmatched"
+
+// routePattern returns the matched chi route pattern, or unmatchedRoute.
+func routePattern(ctx context.Context) string {
+	if rctx := chi.RouteContext(ctx); rctx != nil {
+		if p := rctx.RoutePattern(); p != "" {
+			return p
+		}
+	}
+	return unmatchedRoute
+}
+
+// withTraceAttrs adds trace_id, span_id and trace_flags of the span in ctx to
+// logger, or returns logger unchanged when ctx carries no valid span context.
+// The keys and formats match otel.TraceHandler.
+func withTraceAttrs(logger *slog.Logger, ctx context.Context) *slog.Logger {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return logger
+	}
+	return logger.With(
+		slog.String("trace_id", sc.TraceID().String()),
+		slog.String("span_id", sc.SpanID().String()),
+		slog.String("trace_flags", sc.TraceFlags().String()),
+	)
 }
 
 // requestIDNullable wraps a possibly-empty request ID.

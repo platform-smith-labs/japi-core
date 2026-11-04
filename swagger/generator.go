@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-openapi/spec"
 	"github.com/swaggo/swag"
-	"github.com/platform-smith-labs/japi-core/v3/handler"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
 )
 
 // SwaggerInfo holds the general Swagger information

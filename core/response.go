@@ -2,8 +2,10 @@ package core
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
 )
 
 // Simple response helper functions
@@ -58,64 +60,15 @@ func Health(w http.ResponseWriter, status string, checks map[string]bool) error 
 	return JSON(w, http.StatusOK, response)
 }
 
-// Error sends an error response with logging
-func Error(w http.ResponseWriter, r *http.Request, status int, message string) error {
-	apiErr := NewAPIError(status, message)
-	return WriteAPIError(w, r, *apiErr)
-}
+// unmatchedRoute is logged as http.route when no chi route pattern matched.
+// It equals otel.UnmatchedRoute.
+const unmatchedRoute = "unmatched"
 
-// WriteAPIError sends an error response for APIError types with comprehensive logging
-func WriteAPIError(w http.ResponseWriter, r *http.Request, apiErr APIError) error {
-	// Build log fields
-	logFields := []any{
-		"status", apiErr.Code,
-		"message", apiErr.Message,
+// requestRoute returns the matched chi route pattern, or unmatchedRoute. The
+// raw URL path is never used in its place.
+func requestRoute(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.RoutePattern() != "" {
+		return rctx.RoutePattern()
 	}
-
-	if apiErr.Detail != "" {
-		logFields = append(logFields, "detail", apiErr.Detail)
-	}
-
-	if len(apiErr.Fields) > 0 {
-		logFields = append(logFields, "validation_field_count", len(apiErr.Fields))
-		logFields = append(logFields, "validation_fields", apiErr.Fields)
-	}
-
-	// Add request context
-	logFields = append(logFields, extractRequestContext(r)...)
-
-	// Log based on status code
-	if apiErr.Code >= 500 {
-		slog.Error("API error response", logFields...)
-	} else if apiErr.Code >= 400 {
-		slog.Warn("API error response", logFields...)
-	} else {
-		slog.Info("API error response", logFields...)
-	}
-
-	// Unified response structure
-	response := map[string]any{
-		"error": apiErr,
-	}
-	return JSON(w, apiErr.Code, response)
-}
-
-// extractRequestContext extracts useful request context for logging
-func extractRequestContext(r *http.Request) []any {
-	logFields := []any{
-		"method", r.Method,
-		"path", r.URL.Path,
-		"remote_addr", r.RemoteAddr,
-		"user_agent", r.Header.Get("User-Agent"),
-	}
-
-	if r.URL.RawQuery != "" {
-		logFields = append(logFields, "query", r.URL.RawQuery)
-	}
-
-	if requestID := r.Header.Get("X-Request-ID"); requestID != "" {
-		logFields = append(logFields, "request_id", requestID)
-	}
-
-	return logFields
+	return unmatchedRoute
 }

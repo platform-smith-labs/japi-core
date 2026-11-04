@@ -3,10 +3,13 @@ package db
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/platform-smith-labs/japi-core/v4/internal/sqltrace"
 )
 
 // Config holds database configuration
@@ -21,6 +24,20 @@ type Config struct {
 	MaxIdleConns int           // Maximum number of idle connections (default: 25)
 	MaxLifetime  time.Duration // Maximum connection lifetime (default: 5 minutes)
 	MaxIdleTime  time.Duration // Maximum connection idle time (default: 5 minutes)
+
+	// Tracing wraps the driver so every statement gets an OpenTelemetry
+	// client span and a db.client.operation.duration measurement through
+	// the global tracer and meter providers. Statement arguments and text
+	// are never recorded; see otel.WrapDriver for the recorded attributes.
+	// When false (the default) the pgx driver is used unwrapped.
+	Tracing bool
+
+	// TracingRequireParent, with Tracing, starts a database span only when
+	// the statement's context already carries a valid span (a request, a
+	// traced job), so untraced background work does not create root traces
+	// of single queries. Durations are still recorded. See
+	// otel.SQLRequireParentSpan.
+	TracingRequireParent bool
 }
 
 // Connect establishes a database connection with the given configuration
@@ -55,10 +72,11 @@ func Connect(config Config) (*sql.DB, error) {
 			config.MaxIdleConns, config.MaxOpenConns)
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	connector, err := openConnector(config, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	db := sql.OpenDB(connector)
 
 	// Configure connection pool
 	db.SetMaxOpenConns(config.MaxOpenConns)
@@ -73,6 +91,19 @@ func Connect(config Config) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// openConnector returns the pgx connector for dsn, wrapped for tracing when
+// config.Tracing is set.
+func openConnector(config Config, dsn string) (driver.Connector, error) {
+	connector, err := stdlib.GetDefaultDriver().(driver.DriverContext).OpenConnector(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if config.Tracing {
+		return sqltrace.WrapConnector(connector, sqltrace.Options{RequireParent: config.TracingRequireParent}), nil
+	}
+	return connector, nil
 }
 
 // HealthCheck performs a basic health check on the database

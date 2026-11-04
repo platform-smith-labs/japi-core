@@ -6,6 +6,7 @@ package typed
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	"github.com/platform-smith-labs/japi-core/v3/handler"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -85,8 +86,8 @@ func ParseParams[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.
 				if queryTag != "" {
 					paramType = "query parameter"
 				}
-				return zeroResponse, core.NewAPIError(http.StatusBadRequest,
-					"Required "+paramType+" '"+paramName+"' is missing")
+				return zeroResponse, core.BadRequest(core.CodeBadRequest,
+					"Required "+paramType+" '"+paramName+"' is missing.")
 			}
 
 			// Convert string parameter to appropriate type
@@ -96,20 +97,19 @@ func ParseParams[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.
 				if queryTag != "" {
 					paramType = "query parameter"
 				}
-				return zeroResponse, core.NewAPIError(http.StatusBadRequest,
-					"Invalid "+paramType+" '"+paramName+"': "+err.Error())
+				// setFieldValue's errors are fixed texts that never quote
+				// the value.
+				return zeroResponse, core.BadRequest(core.CodeBadRequest,
+					"Invalid "+paramType+" '"+paramName+"': "+err.Error()+".").WithCause(err)
 			}
 		}
 
 		// Validate the populated struct
 		if err := validate.Struct(params); err != nil {
 			var zeroResponse ResponseBodyT
-			fieldErrors := parseValidationErrors(err)
-			validationErr := core.NewValidationError("Parameter validation failed")
-			for field, errors := range fieldErrors {
-				validationErr.AddField(field, strings.Join(errors, " || "))
-			}
-			return zeroResponse, validationErr
+			// Parameters are not part of the JSON body: no pointer, the
+			// detail names the parameter.
+			return zeroResponse, core.Validation(fieldErrors(err, false)...).WithCause(err)
 		}
 
 		// Set validated parameters in context
@@ -143,7 +143,12 @@ func ParseBody[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.Ha
 			rawBody, err = io.ReadAll(r.Body)
 			if err != nil {
 				var zeroResponse ResponseBodyT
-				return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Failed to read request body: "+err.Error())
+				var tooLarge *http.MaxBytesError
+				if errors.As(err, &tooLarge) {
+					return zeroResponse, core.NewProblem(core.CodeRequestTooLarge, http.StatusRequestEntityTooLarge,
+						"The request body is too large.").WithCause(err)
+				}
+				return zeroResponse, core.BadRequest(core.CodeBadRequest, "The request body could not be read.").WithCause(err)
 			}
 			// Store raw body in context
 			ctx.BodyRaw = handler.NewNullable(rawBody)
@@ -166,25 +171,21 @@ func ParseBody[ParamTypeT any, BodyTypeT any, ResponseBodyT any](next handler.Ha
 		// Body is expected - ensure it's provided
 		if r.ContentLength == 0 {
 			var zeroResponse ResponseBodyT
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Request body is required")
+			return zeroResponse, core.BadRequest(core.CodeBadRequest, "A request body is required.")
 		}
 
 		// Parse JSON body from the raw bytes
 		var body BodyTypeT
 		if err := json.NewDecoder(bytes.NewReader(rawBody)).Decode(&body); err != nil {
 			var zeroResponse ResponseBodyT
-			return zeroResponse, core.NewAPIError(http.StatusBadRequest, "Invalid JSON format: "+err.Error())
+			// The decoder's message can quote the body: log only.
+			return zeroResponse, core.BadRequest(core.CodeInvalidJSON, "The request body is not valid JSON.").WithCause(err)
 		}
 
 		// Validate body structure
 		if err := validate.Struct(body); err != nil {
 			var zeroResponse ResponseBodyT
-			fieldErrors := parseValidationErrors(err)
-			validationErr := core.NewValidationError("Validation failed")
-			for field, errors := range fieldErrors {
-				validationErr.AddField(field, strings.Join(errors, " || "))
-			}
-			return zeroResponse, validationErr
+			return zeroResponse, core.Validation(fieldErrors(err, true)...).WithCause(err)
 		}
 
 		// Set validated body in context
@@ -224,7 +225,8 @@ func isRequired(field reflect.StructField) bool {
 	return strings.Contains(validateTag, "required")
 }
 
-// setFieldValue sets the field value from string parameter
+// setFieldValue sets the field value from string parameter. Its errors never
+// quote the value: they are logged as the cause of a 400.
 func setFieldValue(field reflect.Value, value string) error {
 	if !field.CanSet() {
 		return fmt.Errorf("field cannot be set")
@@ -239,7 +241,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			intVal, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				return fmt.Errorf("invalid integer: %s", value)
+				return errors.New("not an integer")
 			}
 			field.SetInt(intVal)
 		}
@@ -249,7 +251,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			uintVal, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
-				return fmt.Errorf("invalid unsigned integer: %s", value)
+				return errors.New("not an unsigned integer")
 			}
 			field.SetUint(uintVal)
 		}
@@ -259,7 +261,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			floatVal, err := strconv.ParseFloat(value, 64)
 			if err != nil {
-				return fmt.Errorf("invalid float: %s", value)
+				return errors.New("not a number")
 			}
 			field.SetFloat(floatVal)
 		}
@@ -269,7 +271,7 @@ func setFieldValue(field reflect.Value, value string) error {
 		} else {
 			boolVal, err := strconv.ParseBool(value)
 			if err != nil {
-				return fmt.Errorf("invalid boolean: %s", value)
+				return errors.New("not a boolean")
 			}
 			field.SetBool(boolVal)
 		}
@@ -283,7 +285,7 @@ func setFieldValue(field reflect.Value, value string) error {
 			} else {
 				parsedUUID, err := uuid.Parse(value)
 				if err != nil {
-					return fmt.Errorf("invalid UUID format: %s", value)
+					return errors.New("not a UUID")
 				}
 				field.Set(reflect.ValueOf(parsedUUID))
 			}
@@ -297,29 +299,54 @@ func setFieldValue(field reflect.Value, value string) error {
 	return nil
 }
 
-// parseValidationErrors converts validator.ValidationErrors to a structured field map
-func parseValidationErrors(err error) map[string][]string {
-	fieldErrors := make(map[string][]string)
+// fieldErrors converts validator errors to Problem field errors, one entry
+// per failed rule, in the validator's order. With pointers, each entry
+// carries a JSON Pointer to the field in the request body. Messages never
+// quote the rejected value.
+func fieldErrors(err error, pointers bool) []core.FieldError {
+	var validationErrors validator.ValidationErrors
+	if !errors.As(err, &validationErrors) {
+		return nil
+	}
+	out := make([]core.FieldError, 0, len(validationErrors))
+	for _, fe := range validationErrors {
+		entry := core.FieldError{Detail: generateFieldErrorMessage(fe)}
+		if pointers {
+			entry.Pointer = jsonPointer(fe.Namespace())
+		}
+		out = append(out, entry)
+	}
+	return out
+}
 
-	if validationErrors, ok := err.(validator.ValidationErrors); ok {
-		for _, fieldError := range validationErrors {
-			// Convert field name to lowercase for consistent JSON keys
-			fieldName := strings.ToLower(fieldError.Field())
-
-			// Remove struct name prefix if present (e.g., "CreateUserRequest.Password" -> "password")
-			if dotIndex := strings.LastIndex(fieldName, "."); dotIndex != -1 {
-				fieldName = fieldName[dotIndex+1:]
-			}
-
-			// Generate user-friendly error message
-			message := generateFieldErrorMessage(fieldError)
-
-			// Append error message to field (supports multiple errors per field)
-			fieldErrors[fieldName] = append(fieldErrors[fieldName], message)
+// jsonPointer converts a validator namespace ("Body.items[0].sku", field
+// names from json tags) to a JSON Pointer fragment ("#/items/0/sku"). The
+// first segment, the Go type name of the body, is dropped.
+func jsonPointer(namespace string) string {
+	_, rest, found := strings.Cut(namespace, ".")
+	if !found {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("#")
+	for _, seg := range strings.Split(rest, ".") {
+		name, index, _ := strings.Cut(seg, "[")
+		if name != "" {
+			b.WriteString("/" + escapePointerToken(name))
+		}
+		// Each "[n]" (slice index or map key) becomes its own token.
+		for index != "" {
+			key, more, _ := strings.Cut(index, "]")
+			b.WriteString("/" + escapePointerToken(key))
+			_, index, _ = strings.Cut(more, "[")
 		}
 	}
+	return b.String()
+}
 
-	return fieldErrors
+// escapePointerToken escapes a JSON Pointer reference token (RFC 6901).
+func escapePointerToken(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "~", "~0"), "/", "~1")
 }
 
 // generateFieldErrorMessage converts validator field error to user-friendly message

@@ -4,11 +4,12 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/go-chi/cors"
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	httpmiddleware "github.com/platform-smith-labs/japi-core/v3/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/internal/realip"
+	httpmiddleware "github.com/platform-smith-labs/japi-core/v4/middleware/http"
+	"github.com/platform-smith-labs/japi-core/v4/otel"
 )
 
 // RouterOption is a functional option that configures the Chi router's CORS settings.
@@ -24,6 +25,9 @@ type routerConfig struct {
 	exposedHeaders   []string
 	allowCredentials bool
 	maxAge           int
+
+	// tracing is nil unless WithTracing was applied.
+	tracing func(http.Handler) http.Handler
 }
 
 // defaultRouterConfig returns the secure baseline CORS configuration.
@@ -81,6 +85,26 @@ func WithMaxAge(seconds int) RouterOption {
 	return func(cfg *routerConfig) { cfg.maxAge = seconds }
 }
 
+// WithTracing enables OpenTelemetry server tracing (otel.Middleware) on the
+// router. It is off by default. Spans are exported only once otelsdk.Setup (package otel/sdk) has
+// installed a tracer provider; until then the middleware is effectively free.
+//
+// The tracing middleware is installed right after RequestID/RealIP and before
+// Recoverer, so a recovered panic is seen as a 500 on the span (status Error
+// "panic"). With tracing on, X-Request-ID on every response is the trace ID
+// (see otel.RequestIDFromTrace). Middleware the
+// caller adds afterwards with r.Use (logging, metrics.EnablePrometheusMetrics)
+// runs inside the span, so its log lines and exemplars can carry the trace ID.
+//
+// Example:
+//
+//	r := router.NewChiRouterWithOptions(
+//	    router.WithTracing("my-service", otel.ExcludeFromDuration("/events")),
+//	)
+func WithTracing(service string, opts ...otel.MiddlewareOption) RouterOption {
+	return func(cfg *routerConfig) { cfg.tracing = otel.Middleware(service, opts...) }
+}
+
 // newChiRouter is the single internal constructor all public constructors delegate to.
 // It applies defaults then each option in order, constructs the chi router, and attaches
 // the standard middleware stack and CORS handler exactly once.
@@ -91,13 +115,22 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	// Echo the ID chi just generated back to the caller. chi stores it in the context
-	// and writes no response header, so without this the ID exists on the server and is
-	// invisible to the client that would quote it in a support request.
-	r.Use(httpmiddleware.WithRequestIDHeader())
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
+	// Request ID (inbound X-Request-ID or a new UUID) in the context and on the
+	// response; with tracing on, RequestIDFromTrace replaces it with the trace
+	// ID below. chi's middleware package is deliberately not imported: it
+	// registers net/http/pprof on http.DefaultServeMux.
+	r.Use(httpmiddleware.WithRequestID())
+	r.Use(realip.Middleware)
+	if cfg.tracing != nil {
+		r.Use(cfg.tracing)
+		// From here on the request ID is the trace ID (response header and
+		// context), so the ID a client quotes finds the trace.
+		r.Use(otel.RequestIDFromTrace())
+	}
+	// Inside the span: a panic becomes the generic 500 Problem Details body
+	// with trace_id; the span and one log line get the type and stack, never
+	// the panic value.
+	r.Use(otel.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.allowedOrigins,
 		AllowedMethods:   cfg.allowedMethods,
@@ -106,7 +139,37 @@ func newChiRouter(opts ...RouterOption) chi.Router {
 		AllowCredentials: cfg.allowCredentials,
 		MaxAge:           cfg.maxAge,
 	}))
+	// Unmatched requests get Problem Details bodies too (chi's defaults are
+	// a text/plain 404 and an empty 405). A caller may still replace them
+	// with r.NotFound / r.MethodNotAllowed.
+	r.NotFound(notFound)
+	r.MethodNotAllowed(methodNotAllowed(r))
 	return r
+}
+
+// notFound answers a request no route matches.
+func notFound(w http.ResponseWriter, r *http.Request) {
+	_ = core.WriteProblem(w, r, core.NotFound(core.CodeNotFound, "No resource matches the request path."))
+}
+
+// standardMethods are the methods probed to build a 405's Allow header.
+var standardMethods = []string{
+	http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+	http.MethodDelete, http.MethodOptions, http.MethodConnect, http.MethodTrace,
+}
+
+// methodNotAllowed answers a request whose path matches a route but not its
+// method, with the Allow header chi's default handler would send.
+func methodNotAllowed(routes chi.Routes) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, m := range standardMethods {
+			if routes.Match(chi.NewRouteContext(), m, r.URL.Path) {
+				w.Header().Add("Allow", m)
+			}
+		}
+		_ = core.WriteProblem(w, r, core.NewProblem(core.CodeMethodNotAllowed, http.StatusMethodNotAllowed,
+			"The resource does not support this method."))
+	}
 }
 
 // NewChiRouter creates a Chi router with the secure default CORS configuration.
@@ -151,15 +214,9 @@ func NewChiRouterWithOptions(opts ...RouterOption) chi.Router {
 	return newChiRouter(opts...)
 }
 
-// AdaptErrorHandler adapts a core.HandlerFunc to work with Chi.
+// AdaptErrorHandler adapts a core.HandlerFunc to work with Chi. A returned
+// error is written with core.WriteError (a *core.Problem as constructed,
+// anything else as the generic 500); context.Canceled writes nothing.
 func AdaptErrorHandler(handler core.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := handler(w, r); err != nil {
-			if apiErr, ok := err.(*core.APIError); ok {
-				core.WriteAPIError(w, r, *apiErr)
-			} else {
-				core.Error(w, r, http.StatusInternalServerError, "Internal Server Error")
-			}
-		}
-	}
+	return handler.ServeHTTP
 }

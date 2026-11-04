@@ -1,12 +1,13 @@
 package typed
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
-	"github.com/platform-smith-labs/japi-core/v3/core"
-	"github.com/platform-smith-labs/japi-core/v3/handler"
-	"github.com/platform-smith-labs/japi-core/v3/jwt"
+	"github.com/platform-smith-labs/japi-core/v4/core"
+	"github.com/platform-smith-labs/japi-core/v4/handler"
+	"github.com/platform-smith-labs/japi-core/v4/jwt"
 	"github.com/google/uuid"
 )
 
@@ -46,35 +47,33 @@ func RequireAuth[ParamTypeT any, BodyTypeT any, ResponseBodyT any](
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			var zeroResponse ResponseBodyT
-			return zeroResponse, core.NewAPIError(http.StatusUnauthorized, "Authorization header required")
+			return zeroResponse, core.Unauthorized(core.CodeUnauthorized, "An Authorization header is required.")
 		}
 
 		// Check Bearer token format
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			var zeroResponse ResponseBodyT
-			return zeroResponse, core.NewAPIError(http.StatusUnauthorized, "Authorization header must start with 'Bearer '")
+			return zeroResponse, core.Unauthorized(core.CodeUnauthorized, "The Authorization header must use the Bearer scheme.")
 		}
 
 		// Extract token
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if token == "" {
 			var zeroResponse ResponseBodyT
-			return zeroResponse, core.NewAPIError(http.StatusUnauthorized, "Bearer token is required")
+			return zeroResponse, core.Unauthorized(core.CodeUnauthorized, "A bearer token is required.")
 		}
 
 		// Validate JWT secret is provided
 		if jwtSecret == "" {
 			var zeroResponse ResponseBodyT
-			ctx.Logger.Error("JWT secret not configured")
-			return zeroResponse, core.NewAPIError(http.StatusInternalServerError, "Authentication configuration error")
+			return zeroResponse, core.Internal(errors.New("JWT secret not configured"))
 		}
 
 		// Validate JWT token
 		claims, err := jwt.ValidateToken(token, jwtSecret)
 		if err != nil {
 			var zeroResponse ResponseBodyT
-			ctx.Logger.Warn("Invalid JWT token", "error", err.Error())
-			return zeroResponse, core.NewAPIError(http.StatusUnauthorized, "Invalid or expired token")
+			return zeroResponse, core.Unauthorized(core.CodeUnauthorized, "The token is invalid or expired.").WithCause(err)
 		}
 
 		// Verify user and company still exist in database
